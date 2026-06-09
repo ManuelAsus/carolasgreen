@@ -714,6 +714,20 @@ async function realizarPedido(e) {
 
         // Crear pedido en Firestore
         console.log('🔄 Creando pedido en Firestore con ubicación:', ubicacionCliente);
+        
+        // IMPORTANTE: Solo guardar ubicacionCliente si se obtuvieron coordenadas GPS válidas
+        let ubicacionFirestore = null;
+        if (ubicacionCliente.lat && ubicacionCliente.lng) {
+            ubicacionFirestore = {
+                lat: ubicacionCliente.lat,
+                lng: ubicacionCliente.lng,
+                timestamp: new Date().toISOString()
+            };
+            console.log('✅ GPS válido, guardando coordenadas:', ubicacionFirestore);
+        } else {
+            console.warn('⚠️ Sin GPS - admin mostrará ubicación por defecto');
+        }
+        
         const pedidoDoc = await addDoc(collection(db, 'pedidos'), {
             nombre: nombre,
             telefono: telefono,
@@ -725,10 +739,7 @@ async function realizarPedido(e) {
             estado: 'pendiente',
             fecha: new Date(),
             visto: false,
-            ubicacionCliente: {
-                lat: ubicacionCliente.lat || 18.4241,
-                lng: ubicacionCliente.lng || -69.9267
-            }
+            ubicacionCliente: ubicacionFirestore
         });
         console.log('✅ Pedido creado en Firestore:', pedidoDoc.id);
 

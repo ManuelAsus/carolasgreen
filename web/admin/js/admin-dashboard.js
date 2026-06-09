@@ -926,21 +926,25 @@ function mostrarMapaAdmin(pedidoId, direccionCliente, nombreCliente, lat = null,
         
         mapaInfo.innerHTML = infoText;
     } else {
-        // Si no tenemos coordenadas, buscar la dirección
-        console.log('🔍 Buscando dirección:', direccionCliente);
+        // Si no tenemos coordenadas GPS, mostrar ubicación por defecto (tienda)
+        console.log('⚠️ Sin coordenadas GPS - mostrando ubicación por defecto');
         
-        fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(direccionCliente)}&format=json&limit=1`)
-            .then(res => res.json())
+        const destLat = 18.4241;  // Ubicación por defecto
+        const destLng = -69.9267;
+        const data = [{lat: destLat, lon: destLng}];
+        
+        // Simular estructura fetch para mantener consistencia
+        Promise.resolve(data)
             .then(data => {
                 if (data.length > 0) {
-                    const destLat = parseFloat(data[0].lat);
-                    const destLng = parseFloat(data[0].lon);
+                    const destLatResult = parseFloat(data[0].lat);
+                    const destLngResult = parseFloat(data[0].lon);
                     
                     // Grupo de capas para fitBounds
                     const group = new L.FeatureGroup();
                     
                     // Marcar ubicación del cliente
-                    const markerCliente = L.marker([destLat, destLng], {
+                    const markerCliente = L.marker([destLatResult, destLngResult], {
                         icon: L.icon({
                             iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
                             shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -956,9 +960,9 @@ function mostrarMapaAdmin(pedidoId, direccionCliente, nombreCliente, lat = null,
                     
                     let infoText = `
                         <p>📍 <strong>Cliente:</strong> ${nombreCliente}</p>
-                        <p>📮 <strong>Dirección:</strong> ${direccionCliente}</p>
-                        <p>📌 <strong>Coordenadas (geocodificadas):</strong> ${destLat.toFixed(4)}, ${destLng.toFixed(4)}</p>
-                        <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">🔴 Ubicación del cliente (búsqueda de dirección)</p>
+                        <p>📮 <strong>Dirección registrada:</strong> ${direccionCliente}</p>
+                        <p>📌 <strong>Coordenadas:</strong> ${destLat.toFixed(4)}, ${destLng.toFixed(4)}</p>
+                        <p style="font-size: 0.9rem; color: #f39c12; margin-top: 0.5rem;">⚠️ Sin GPS del cliente - mostrando ubicación por defecto</p>
                     `;
                     
                     // Si el repartidor tiene ubicación, mostrarla
@@ -984,7 +988,7 @@ function mostrarMapaAdmin(pedidoId, direccionCliente, nombreCliente, lat = null,
                         markerRepartidor.addTo(mapa);
                         
                         // Dibujar línea entre cliente y repartidor
-                        const polyline = L.polyline([[destLat, destLng], [repLat, repLng]], {
+                        const polyline = L.polyline([[destLatResult, destLngResult], [repLat, repLng]], {
                             color: '#0066ff',
                             weight: 3,
                             opacity: 0.7,
@@ -995,10 +999,10 @@ function mostrarMapaAdmin(pedidoId, direccionCliente, nombreCliente, lat = null,
                         
                         // Calcular distancia usando fórmula Haversine
                         const R = 6371; // Radio de la Tierra en km
-                        const dLat = (repLat - destLat) * Math.PI / 180;
-                        const dLng = (repLng - destLng) * Math.PI / 180;
+                        const dLat = (repLat - destLatResult) * Math.PI / 180;
+                        const dLng = (repLng - destLngResult) * Math.PI / 180;
                         const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                                  Math.cos(destLat * Math.PI / 180) * Math.cos(repLat * Math.PI / 180) *
+                                  Math.cos(destLatResult * Math.PI / 180) * Math.cos(repLat * Math.PI / 180) *
                                   Math.sin(dLng/2) * Math.sin(dLng/2);
                         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
                         const distancia = (R * c).toFixed(2);
@@ -1021,11 +1025,11 @@ function mostrarMapaAdmin(pedidoId, direccionCliente, nombreCliente, lat = null,
                             mapa.fitBounds(group.getBounds().pad(0.15), {maxZoom: 15, animate: true});
                         } catch (e) {
                             console.warn('Error en fitBounds:', e);
-                            mapa.setView([destLat, destLng], 13);
+                            mapa.setView([destLatResult, destLngResult], 13);
                         }
                     } else {
                         // Solo mostrar ubicación del cliente
-                        mapa.setView([destLat, destLng], 15);
+                        mapa.setView([destLatResult, destLngResult], 15);
                     }
                     
                     mapaInfo.innerHTML = infoText;
