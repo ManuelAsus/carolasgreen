@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Administrador - Carolas Green</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="../css/responsive.css">
+    <link rel="stylesheet" href="css/admin-style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Leaflet para mapas -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+</head>
+<body>
+    <!-- Admin Navbar -->
+    <nav class="admin-navbar">
+        <div class="container">
+            <div class="admin-logo">
+                <i class="fas fa-tachometer-alt"></i>
+                <span>Panel Administrador</span>
+            </div>
+            <div class="admin-user">
+                <span id="adminUserEmail">Admin</span>
+                <button id="logoutBtn" class="btn-danger">Cerrar Sesión</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Admin Container -->
+    <div class="admin-container">
+        <!-- Sidebar -->
+        <aside class="admin-sidebar">
+            <ul class="admin-menu">
+                <li><a href="#" class="menu-item active" data-section="dashboard"><i class="fas fa-chart-line"></i> Dashboard</a></li>
+                <li><a href="#" class="menu-item" data-section="productos"><i class="fas fa-utensils"></i> Productos</a></li>
+                <li><a href="#" class="menu-item" data-section="pedidos"><i class="fas fa-box"></i> Pedidos</a></li>
+                <li><a href="#" class="menu-item" data-section="menus"><i class="fas fa-file"></i> Menús</a></li>
+                <li><a href="#" class="menu-item" data-section="galeria"><i class="fas fa-images"></i> Galería</a></li>
+                <li><a href="#" class="menu-item" data-section="configuracion"><i class="fas fa-cog"></i> Configuración</a></li>
+                <li><a href="#" class="menu-item" data-section="comentarios"><i class="fas fa-comments"></i> Comentarios</a></li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="admin-main">
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="admin-section active">
+                <h2>Dashboard</h2>
+                <div id="loadingMessage" style="text-align: center; padding: 2rem; color: #798839;">Cargando datos...</div>
+                <div class="dashboard-stats" id="dashboardStats"></div>
+                <div class="dashboard-recent" id="dashboardRecent"></div>
+            </section>
+
+            <!-- Productos Section -->
+            <section id="productos" class="admin-section">
+                <div class="admin-header">
+                    <h2>Gestión de Productos</h2>
+                    <button class="btn-primary" id="btnAgregarProducto">+ Agregar Producto</button>
+                </div>
+                
+                <div id="formProductoContainer" style="display: none; background: white; padding: 2rem; border-radius: 10px; margin-bottom: 2rem;">
+                    <h3>Nuevo Producto</h3>
+                    <form id="formProducto">
+                        <div class="form-group">
+                            <label>Nombre del Producto</label>
+                            <input type="text" id="nombreProducto" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Categoría</label>
+                            <select id="categoriaProducto" required>
+                                <option value="">Selecciona una categoría</option>
+                                <option value="comidas">Comidas</option>
+                                <option value="bebidas">Bebidas</option>
+                                <option value="postres">Postres</option>
+                                <option value="licuados">Licuados</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Precio ($)</label>
+                            <input type="number" id="precioProducto" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Ingredientes</label>
+                            <textarea id="ingredientesProducto" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Stock</label>
+                            <input type="number" id="stockProducto" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Imagen</label>
+                            <input type="file" id="imagenProducto" accept="image/*">
+                            <small>La imagen se convertirá a texto y se guardará en la BD</small>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">Guardar Producto</button>
+                            <button type="button" class="btn-danger" id="btnCancelarProducto">Cancelar</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="listaProductos" class="productos-admin-list"></div>
+            </section>
+
+            <!-- Pedidos Section -->
+            <section id="pedidos" class="admin-section">
+                <h2>Gestión de Pedidos</h2>
+                <div class="admin-filters">
+                    <input type="text" id="buscarPedido" placeholder="Buscar por nombre...">
+                    <select id="filtroEstado">
+                        <option value="">Todos los estados</option>
+                        <option value="pendiente">Pendiente</option>
+                        <option value="visto">Visto</option>
+                        <option value="preparacion">En Preparación</option>
+                        <option value="camino">En Camino</option>
+                        <option value="completado">Completado</option>
+                    </select>
+                </div>
+                <div id="listaPedidos" class="pedidos-list"></div>
+            </section>
+
+            <!-- Menús Section -->
+            <section id="menus" class="admin-section">
+                <div class="admin-header">
+                    <h2>Gestión de Menús</h2>
+                    <button class="btn-primary" id="btnAgregarMenu">+ Agregar Menú</button>
+                </div>
+                
+                <div id="formMenuContainer" style="display: none;">
+                    <form id="formMenu">
+                        <div class="form-group">
+                            <label>Nombre del Menú</label>
+                            <input type="text" id="nombreMenu" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Tipo</label>
+                            <select id="tipoMenu" required>
+                                <option value="">Selecciona tipo</option>
+                                <option value="imagen">Imagen</option>
+                                <option value="pdf">PDF</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="imagenMenuGroup" style="display: none;">
+                            <label>Imagen</label>
+                            <input type="file" id="imagenMenu" accept="image/*">
+                        </div>
+                        <div class="form-group" id="enlaceMenuGroup" style="display: none;">
+                            <label>Archivo PDF</label>
+                            <input type="file" id="archivoMenuPdf" accept=".pdf">
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">Guardar Menú</button>
+                            <button type="button" class="btn-danger" id="btnCancelarMenu">Cancelar</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="listaMenus" class="menus-admin-list"></div>
+            </section>
+
+            <!-- Galería Section -->
+            <section id="galeria" class="admin-section">
+                <div class="admin-header">
+                    <h2>Gestión de Galería</h2>
+                    <button class="btn-primary" id="btnAgregarGaleria">+ Agregar Imagen</button>
+                </div>
+                
+                <div id="formGaleriaContainer" style="display: none;">
+                    <form id="formGaleria">
+                        <div class="form-group">
+                            <label>Título de la Imagen</label>
+                            <input type="text" id="tituloGaleria" placeholder="Opcional">
+                        </div>
+                        <div class="form-group">
+                            <label>Imagen</label>
+                            <input type="file" id="archivoGaleria" accept="image/*" required>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">Subir Imagen</button>
+                            <button type="button" class="btn-danger" id="btnCancelarGaleria">Cancelar</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="listaGaleria" class="galeria-admin-list"></div>
+            </section>
+
+            <!-- Configuración Section -->
+            <section id="configuracion" class="admin-section">
+                <h2>Configuración de la Tienda</h2>
+                
+                <div class="config-card">
+                    <h3>Logo de la Tienda</h3>
+                    <div id="configLogoContainer">
+                        <img id="previewLogo" src="" alt="Logo" style="max-width: 200px; margin: 1rem 0;">
+                        <div class="form-group">
+                            <label>Cambiar Logo</label>
+                            <input type="file" id="archivoLogo" accept="image/*">
+                            <button type="button" class="btn-primary" id="btnGuardarLogo">Guardar Logo</button>
+                            <button type="button" class="btn-danger" id="btnEliminarLogo">Eliminar Logo</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="config-card">
+                    <h3>Imagen Principal (Hero)</h3>
+                    <div id="configImagenContainer">
+                        <img id="previewImagenPrincipal" src="" alt="Imagen Principal" style="max-width: 300px; margin: 1rem 0;">
+                        <div class="form-group">
+                            <label>Cambiar Imagen</label>
+                            <input type="file" id="archivoImagenPrincipal" accept="image/*">
+                            <button type="button" class="btn-primary" id="btnGuardarImagenPrincipal">Guardar Imagen</button>
+                            <button type="button" class="btn-danger" id="btnEliminarImagenPrincipal">Eliminar Imagen</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Comentarios Section -->
+            <section id="comentarios" class="admin-section">
+                <h2>Moderación de Comentarios</h2>
+                <div id="listaComentarios" class="comentarios-list"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal para editar producto -->
+    <div id="editProductoModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Editar Producto</h2>
+            <form id="formEditarProducto">
+                <div class="form-group">
+                    <label>Nombre del Producto</label>
+                    <input type="text" id="editNombreProducto" required>
+                </div>
+                <div class="form-group">
+                    <label>Categoría</label>
+                    <select id="editCategoriaProducto" required>
+                        <option value="comidas">Comidas</option>
+                        <option value="bebidas">Bebidas</option>
+                        <option value="postres">Postres</option>
+                        <option value="licuados">Licuados</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Precio ($)</label>
+                    <input type="number" id="editPrecioProducto" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Ingredientes</label>
+                    <textarea id="editIngredientesProducto" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Stock</label>
+                    <input type="number" id="editStockProducto" required>
+                </div>
+                <button type="submit" class="btn-primary">Guardar Cambios</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Mapa de Entrega -->
+    <div id="mapaAdminModal" class="modal" style="z-index: 2000;">
+        <div class="modal-content" style="max-width: 95%; max-height: 95vh; width: 95%;">
+            <span class="close" onclick="cerrarMapaAdmin()">&times;</span>
+            <h2>Ruta de Entrega</h2>
+            <div id="mapAdminContainer" style="height: 70vh; border-radius: 8px; overflow: hidden;"></div>
+            <div id="mapaAdminInfo" style="margin-top: 1rem; padding: 1rem; background-color: #f5f5f5; border-radius: 8px;"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <!-- PDF.js para convertir PDFs a imágenes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <script type="module" src="js/admin-dashboard.js"></script>
+    <script src="js/mapas-admin-mejorado.js"></script>
+</body>
+</html>
