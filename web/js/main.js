@@ -277,7 +277,8 @@ function agregarAlCarrito(productoId) {
             id: productoId,
             nombre: producto.nombre,
             precio: producto.precio,
-            cantidad: cantidad
+            cantidad: cantidad,
+            imagen: producto.imagen || ''
         });
     }
 
@@ -298,7 +299,8 @@ function comprarAhora(productoId) {
         id: productoId,
         nombre: producto.nombre,
         precio: producto.precio,
-        cantidad: cantidad
+        cantidad: cantidad,
+        imagen: producto.imagen || ''
     }];
 
     localStorage.setItem('carrito', JSON.stringify(carrito));
@@ -335,9 +337,14 @@ function mostrarCarrito() {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'carrito-item';
         itemDiv.innerHTML = `
-            <div class="carrito-item-info">
-                <div class="carrito-item-nombre">${item.nombre}</div>
-                <div class="carrito-item-precio">$${item.precio.toFixed(2)} x ${item.cantidad} = $${itemTotal.toFixed(2)}</div>
+            <div class="carrito-item-layout">
+                <div class="carrito-item-thumb">
+                    ${item.imagen ? `<img src="${item.imagen}" alt="${item.nombre}" class="carrito-item-img">` : '<div class="carrito-item-img-placeholder">🥗</div>'}
+                </div>
+                <div class="carrito-item-info">
+                    <div class="carrito-item-nombre">${item.nombre}</div>
+                    <div class="carrito-item-precio">$${item.precio.toFixed(2)} x ${item.cantidad} = $${itemTotal.toFixed(2)}</div>
+                </div>
             </div>
             <div class="carrito-item-acciones">
                 <input type="number" value="${item.cantidad}" min="1" onchange="actualizarCantidad('${item.id}', this.value)">
