@@ -1,8 +1,12 @@
 // ============================================
-// MAPAS MEJORADOS PARA ADMIN - INCLUYE REPARTIDOR
+// MAPAS ADMIN - REPARTIDOR EN TIEMPO REAL
 // ============================================
 
 let mapaInstanciaAdmin = null;
+let watchPositionId = null;
+let marcadorAdminAdmin = null;
+let marcadorClienteAdmin = null;
+let polylineAdminAdmin = null;
 
 // Para el admin (repartidor): mostrar su ubicación + ubicación del cliente
 window.mostrarMapaAdminMejorado = function(pedidoId, direccionCliente, nombreCliente, lat = null, lng = null) {
@@ -10,211 +14,263 @@ window.mostrarMapaAdminMejorado = function(pedidoId, direccionCliente, nombreCli
     const mapContainer = document.getElementById('mapAdminContainer');
     const mapaInfo = document.getElementById('mapaAdminInfo');
     
-    // Destruir mapa anterior si existe
+    // Destruir mapa anterior
     if (mapaInstanciaAdmin) {
         try {
+            // Detener watchPosition
+            if (watchPositionId !== null) {
+                navigator.geolocation.clearWatch(watchPositionId);
+                watchPositionId = null;
+            }
             mapaInstanciaAdmin.off();
             mapaInstanciaAdmin.remove();
             mapaInstanciaAdmin = null;
+            marcadorAdminAdmin = null;
+            marcadorClienteAdmin = null;
+            polylineAdminAdmin = null;
         } catch (e) {
-            console.warn('Error removiendo mapa anterior:', e);
+            console.warn('Error removiendo mapa:', e);
         }
     }
     
-    // Limpiar contenedor
     mapContainer.innerHTML = '';
-    
-    // Mostrar modal PRIMERO para que el contenedor tenga dimensiones
     modal.classList.add('show');
     
-    mapaInfo.innerHTML = `<p>📍 <strong>Cliente:</strong> ${nombreCliente}</p><p>📮 <strong>Dirección:</strong> ${direccionCliente}</p><p>⏳ Cargando ubicación...</p>`;
+    mapaInfo.innerHTML = `
+        <p style="color: #2980b9; font-weight: bold;">🗺️ Permiso de Ubicación Requerido</p>
+        <p>Para mostrar el mapa con tu ubicación como repartidor:</p>
+        <ul style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.95rem;">
+            <li>✅ Habilita el GPS en tu dispositivo</li>
+            <li>✅ Permite acceso a la ubicación cuando aparezca el prompt</li>
+            <li>✅ Espera mientras se obtiene tu ubicación (puede tomar unos segundos)</li>
+        </ul>
+        <p style="color: #666; font-size: 0.9rem; margin-top: 1rem;">⏳ Cargando mapa...</p>
+    `;
     
-    // Dar tiempo a que el modal aparezca y el contenedor tenga dimensiones
+    // Convertir coordenadas cliente
+    const clientLat = lat !== null ? parseFloat(lat) : null;
+    const clientLng = lng !== null ? parseFloat(lng) : null;
+    
+    // Verificar si hay coordenadas del cliente
+    if (clientLat === null || clientLng === null) {
+        mapaInfo.innerHTML = `
+            <p style="color: #e74c3c;">⚠️ Coordenadas GPS del cliente no disponibles</p>
+            <p>El cliente no proporcionó su ubicación GPS.</p>
+        `;
+        console.warn('Admin: GPS cliente no disponible');
+        return;
+    }
+    
     setTimeout(() => {
         try {
-            // Crear mapa
-            const mapa = L.map('mapAdminContainer', {
-                preferCanvas: true
-            }).setView([18.4241, -69.9267], 13);
-            
-            mapaInstanciaAdmin = mapa;
-            
-            // Agregar tiles de OpenStreetMap
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(mapa);
-            
-            // Forzar que Leaflet recalcule el tamaño del mapa
-            mapa.invalidateSize(false);
-            
-            // Obtener ubicación del repartidor (admin) - buscar en el array global pedidos
-            let repartidorUbicacion = null;
-            if (window.pedidos && Array.isArray(window.pedidos)) {
-                const pedidoData = window.pedidos.find(p => p.id === pedidoId);
-                repartidorUbicacion = pedidoData?.repartidorUbicacion || null;
-            }
-            
-            // Si tenemos coordenadas directas del cliente, usarlas
-    if (lat !== null && lng !== null) {
-        console.log('📍 Usando coordenadas directas del cliente:', lat, lng);
-        
-        // Marcar ubicación del cliente
-        L.marker([lat, lng], {
-            icon: L.icon({
-                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34],
-                shadowSize: [41, 41]
-            })
-        }).addTo(mapa).bindPopup(`<strong>🔴 ${nombreCliente}</strong><br>${direccionCliente}`);
-        
-        // Si existe ubicación del repartidor, mostrarla
-        if (repartidorUbicacion && repartidorUbicacion.lat && repartidorUbicacion.lng) {
-            console.log('🚗 Ubicación del repartidor:', repartidorUbicacion);
-            
-            L.marker([repartidorUbicacion.lat, repartidorUbicacion.lng], {
-                icon: L.icon({
-                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41],
-                    popupAnchor: [1, -34],
-                    shadowSize: [41, 41]
-                })
-            }).addTo(mapa).bindPopup(`<strong>🟢 Mi ubicación (Repartidor)</strong>`);
-            
-            // Dibujar línea entre ambos puntos
-            const latlngs = [[lat, lng], [repartidorUbicacion.lat, repartidorUbicacion.lng]];
-            L.polyline(latlngs, { color: '#dbb42a', weight: 3, opacity: 0.8 }).addTo(mapa);
-            
-            // Calcular distancia
-            const distance = Math.sqrt(
-                Math.pow(repartidorUbicacion.lat - lat, 2) + 
-                Math.pow(repartidorUbicacion.lng - lng, 2)
-            ) * 111; // Aproximado en km
-            
-            // Ajustar zoom para ver ambos puntos
-            const group = new L.featureGroup([
-                L.marker([lat, lng]),
-                L.marker([repartidorUbicacion.lat, repartidorUbicacion.lng])
-            ]);
-            
-            // Ajustar zoom para ver ambos puntos con manejo de errores
-            try {
-                mapa.fitBounds(group.getBounds().pad(0.15), { maxZoom: 15, animate: true });
-            } catch (e) {
-                console.error('Error en fitBounds:', e);
-                mapa.setView([lat, lng], 13);
-            }
-            
-            const timestamp = new Date(repartidorUbicacion.timestamp?.toDate?.() || repartidorUbicacion.timestamp);
-            const horaActualización = timestamp.toLocaleTimeString('es-MX');
-            
-            mapaInfo.innerHTML = `
-                <p><strong style="color: #e74c3c;">🔴 CLIENTE</strong></p>
-                <p>📍 <strong>${nombreCliente}</strong></p>
-                <p>📮 <strong>Dirección:</strong> ${direccionCliente}</p>
-                <p>📌 <strong>Coordenadas:</strong> ${lat.toFixed(4)}, ${lng.toFixed(4)}</p>
-                <hr style="border: 1px solid #ddd; margin: 0.5rem 0;">
-                <p><strong style="color: #27ae60;">🟢 TU UBICACIÓN (REPARTIDOR)</strong></p>
-                <p>📍 <strong>Coordenadas:</strong> ${repartidorUbicacion.lat.toFixed(4)}, ${repartidorUbicacion.lng.toFixed(4)}</p>
-                <p>📏 <strong>Distancia:</strong> ${distance.toFixed(2)} km</p>
-                <p style="font-size: 0.85rem; color: #666; margin-top: 0.5rem;">🕐 Última actualización: ${horaActualización}</p>
-                <button class="btn-secondary" onclick="window.detenerCompartirUbicacion()" style="margin-top: 0.5rem; width: 100%;">⏹️ Detener compartición</button>
-            `;
-        } else {
-            // Centrar mapa en la ubicación del cliente
-            mapa.setView([lat, lng], 15);
-            
-            mapaInfo.innerHTML = `
-                <p>📍 <strong>Cliente:</strong> ${nombreCliente}</p>
-                <p>📮 <strong>Dirección:</strong> ${direccionCliente}</p>
-                <p>📌 <strong>Coordenadas GPS:</strong> ${lat.toFixed(4)}, ${lng.toFixed(4)}</p>
-                <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">🔴 Ubicación del cliente | 🚗 (Sin ubicación de repartidor)</p>
-                <p style="font-size: 0.85rem; color: #999; margin-top: 0.5rem;">💡 Haz clic en "En Camino" para que el cliente comience a ver tu posición en tiempo real.</p>
-            `;
-        }
-    } else {
-        // Si no tenemos coordenadas, buscar la dirección
-        console.log('🔍 Buscando dirección:', direccionCliente);
-        
-        fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(direccionCliente)}&format=json&limit=1`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.length > 0) {
-                    const destLat = parseFloat(data[0].lat);
-                    const destLng = parseFloat(data[0].lon);
-                    
-                    // Marcar ubicación del cliente
-                    L.marker([destLat, destLng], {
-                        icon: L.icon({
-                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-                            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                            iconSize: [25, 41],
-                            iconAnchor: [12, 41],
-                            popupAnchor: [1, -34],
-                            shadowSize: [41, 41]
-                        })
-                    }).addTo(mapa).bindPopup(`<strong>${nombreCliente}</strong><br>${direccionCliente}`);
-                    
-                    // Si existe ubicación del repartidor, mostrarla
-                    if (repartidorUbicacion && repartidorUbicacion.lat && repartidorUbicacion.lng) {
-                        L.marker([repartidorUbicacion.lat, repartidorUbicacion.lng], {
-                            icon: L.icon({
-                                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-                                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                                iconSize: [25, 41],
-                                iconAnchor: [12, 41],
-                                popupAnchor: [1, -34],
-                                shadowSize: [41, 41]
-                            })
-                        }).addTo(mapa).bindPopup(`<strong>🚗 Mi ubicación (Repartidor)</strong>`);
-                        
-                        // Dibujar línea
-                        const latlngs = [[destLat, destLng], [repartidorUbicacion.lat, repartidorUbicacion.lng]];
-                        L.polyline(latlngs, { color: '#dbb42a', weight: 3, opacity: 0.8 }).addTo(mapa);
-                        
-                        const group = new L.featureGroup([
-                            L.marker([destLat, destLng]),
-                            L.marker([repartidorUbicacion.lat, repartidorUbicacion.lng])
-                        ]);
-                        
-                        try {
-                            mapa.fitBounds(group.getBounds().pad(0.15), { maxZoom: 15, animate: true });
-                        } catch (e) {
-                            console.error('Error en fitBounds:', e);
-                            mapa.setView([destLat, destLng], 13);
+            // Obtener ubicación del admin CON ALTA PRECISIÓN
+            if (navigator.geolocation) {
+                const opcionesGeoloc = {
+                    enableHighAccuracy: true,  // Solicitar GPS con máxima precisión
+                    timeout: 10000,             // Esperar 10 segundos máximo
+                    maximumAge: 0               // No usar datos en caché
+                };
+                
+                // Primero obtener la ubicación inicial
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        crearMapaAdmin(position, clientLat, clientLng, pedidoId, direccionCliente, nombreCliente, mapContainer, mapaInfo);
+                    },
+                    (error) => {
+                        console.warn('Error obteniendo ubicación inicial:', error);
+                        mostrarFallback(clientLat, clientLng, direccionCliente, nombreCliente, mapContainer, mapaInfo);
+                    },
+                    opcionesGeoloc
+                );
+                
+                // Luego, usar watchPosition para actualizaciones continuas
+                watchPositionId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        // Actualizar marcador si el mapa existe
+                        if (mapaInstanciaAdmin && marcadorAdminAdmin) {
+                            const newLat = position.coords.latitude;
+                            const newLng = position.coords.longitude;
+                            const accuracy = position.coords.accuracy;
+                            
+                            console.log('📍 Posición actualizada:', newLat, newLng, 'Precisión:', accuracy, 'm');
+                            
+                            const posAnterior = marcadorAdminAdmin.getLatLng();
+                            
+                            // Solo actualizar si cambió la posición (más de 5 metros)
+                            const distMovimiento = Math.sqrt(Math.pow(newLat - posAnterior.lat, 2) + Math.pow(newLng - posAnterior.lng, 2)) * 111000;
+                            
+                            if (distMovimiento > 5) { // 5 metros de tolerancia
+                                marcadorAdminAdmin.setLatLng([newLat, newLng]);
+                                
+                                // Actualizar polyline
+                                if (polylineAdminAdmin) {
+                                    polylineAdminAdmin.setLatLngs([[newLat, newLng], [clientLat, clientLng]]);
+                                }
+                                
+                                // Actualizar distancia
+                                const distance = haversineDistance(newLat, newLng, clientLat, clientLng);
+                                
+                                const mapaInfoHtml = `
+                                    <p><strong style="color: #3498db;">MI UBICACION (ADMIN/REPARTIDOR)</strong></p>
+                                    <p>Coordenadas: ${newLat.toFixed(4)}, ${newLng.toFixed(4)}</p>
+                                    <p style="font-size: 0.85rem; color: #666;">Precisión: ${accuracy.toFixed(0)}m</p>
+                                    <hr>
+                                    <p><strong style="color: #e74c3c;">UBICACION DEL CLIENTE</strong></p>
+                                    <p>${nombreCliente}</p>
+                                    <p>Direccion: ${direccionCliente}</p>
+                                    <p>Coordenadas: ${clientLat.toFixed(4)}, ${clientLng.toFixed(4)}</p>
+                                    <p><strong style="color: #27ae60;">Distancia: ${distance.toFixed(2)} km</strong></p>
+                                    <p style="font-size: 0.9rem; color: #666; margin-top: 1rem;">🔵 Azul=Mi ubicacion | 🔴 Rojo=Cliente</p>
+                                `;
+                                document.getElementById('mapaAdminInfo').innerHTML = mapaInfoHtml;
+                            }
                         }
-                    } else {
-                        mapa.setView([destLat, destLng], 15);
-                    }
-                    
-                    mapaInfo.innerHTML = `
-                        <p>📍 <strong>Cliente:</strong> ${nombreCliente}</p>
-                        <p>📮 <strong>Dirección:</strong> ${direccionCliente}</p>
-                        <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">🔴 Ubicación del cliente (búsqueda de dirección)</p>
-                    `;
-                } else {
-                    mapaInfo.innerHTML = `
-                        <p>⚠️ No se encontró la dirección: ${direccionCliente}</p>
-                        <p>Por favor, verifica la dirección e intenta nuevamente.</p>
-                    `;
-                }
-            })
-            .catch(err => {
-                console.error('Error buscando dirección:', err);
-                mapaInfo.innerHTML = `<p>❌ Error al cargar el mapa. Intenta nuevamente.</p>`;
-            });
+                    },
+                    (error) => {
+                        console.warn('Error en watchPosition:', error);
+                    },
+                    opcionesGeoloc
+                );
+            } else {
+                mostrarFallback(clientLat, clientLng, direccionCliente, nombreCliente, mapContainer, mapaInfo);
+            }
         } catch (error) {
-            console.error('Error creando mapa admin:', error);
-            mapaInfo.innerHTML = `<p>❌ Error al crear el mapa. Por favor intenta nuevamente.</p>`;
+            console.error('Error mapa admin:', error);
+            mapaInfo.innerHTML = `<p style="color: #e74c3c;">❌ Error al crear el mapa</p>`;
         }
     }, 300);
 };
 
-// Override mostrarMapaAdmin para usar la versión mejorada
-const mostrarMapaAdminOriginal = window.mostrarMapaAdmin;
+// Función para crear el mapa
+function crearMapaAdmin(position, clientLat, clientLng, pedidoId, direccionCliente, nombreCliente, mapContainer, mapaInfo) {
+    const adminLat = position.coords.latitude;
+    const adminLng = position.coords.longitude;
+    const accuracy = position.coords.accuracy;
+    
+    console.log('Admin ubicacion:', adminLat, adminLng);
+    console.log('Precisión (metros):', accuracy);
+    console.log('Cliente ubicacion:', clientLat, clientLng);
+    
+    // CREAR MAPA CENTRADO EN ADMIN CON ZOOM MÁS ALTO PARA PRECISIÓN
+    const mapa = L.map('mapAdminContainer', {
+        preferCanvas: true
+    }).setView([adminLat, adminLng], 16);
+    
+    mapaInstanciaAdmin = mapa;
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+    }).addTo(mapa);
+    
+    mapa.invalidateSize(false);
+    
+    const marcadores = [];
+    
+    // MARCADOR AZUL - Tu ubicacion (admin/repartidor)
+    marcadorAdminAdmin = L.marker([adminLat, adminLng], {
+        icon: L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        })
+    }).addTo(mapa).bindPopup('Mi ubicacion (Admin/Repartidor)');
+    marcadores.push(marcadorAdminAdmin);
+    
+    // MARCADOR ROJO - Cliente
+    marcadorClienteAdmin = L.marker([clientLat, clientLng], {
+        icon: L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        })
+    }).addTo(mapa).bindPopup(`${nombreCliente}<br>${direccionCliente}`);
+    marcadores.push(marcadorClienteAdmin);
+    
+    // Linea conectando
+    polylineAdminAdmin = L.polyline([[adminLat, adminLng], [clientLat, clientLng]], {
+        color: '#dbb42a',
+        weight: 3,
+        opacity: 0.8
+    }).addTo(mapa);
+    
+    const distance = haversineDistance(adminLat, adminLng, clientLat, clientLng);
+    
+    // Enfocar en ambos puntos
+    const group = new L.featureGroup(marcadores);
+    try {
+        mapa.fitBounds(group.getBounds().pad(0.15), { maxZoom: 15, animate: true });
+    } catch (e) {
+        console.error('Error fitBounds:', e);
+        mapa.setView([adminLat, adminLng], 13);
+    }
+    
+    mapaInfo.innerHTML = `
+        <p><strong style="color: #3498db;">MI UBICACION (ADMIN/REPARTIDOR)</strong></p>
+        <p>Coordenadas: ${adminLat.toFixed(4)}, ${adminLng.toFixed(4)}</p>
+        <p style="font-size: 0.85rem; color: #666;">Precisión: ${accuracy.toFixed(0)}m</p>
+        <hr>
+        <p><strong style="color: #e74c3c;">UBICACION DEL CLIENTE</strong></p>
+        <p>${nombreCliente}</p>
+        <p>Direccion: ${direccionCliente}</p>
+        <p>Coordenadas: ${clientLat.toFixed(4)}, ${clientLng.toFixed(4)}</p>
+        <p><strong style="color: #27ae60;">Distancia: ${distance.toFixed(2)} km</strong></p>
+        <p style="font-size: 0.9rem; color: #666; margin-top: 1rem;">🔵 Azul=Mi ubicacion | 🔴 Rojo=Cliente</p>
+    `;
+}
+
+// Función para mostrar fallback
+function mostrarFallback(clientLat, clientLng, direccionCliente, nombreCliente, mapContainer, mapaInfo) {
+    const mapa = L.map('mapAdminContainer', {
+        preferCanvas: true
+    }).setView([clientLat, clientLng], 16);
+    
+    mapaInstanciaAdmin = mapa;
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+    }).addTo(mapa);
+    
+    mapa.invalidateSize(false);
+    
+    marcadorClienteAdmin = L.marker([clientLat, clientLng], {
+        icon: L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        })
+    }).addTo(mapa).bindPopup(`${nombreCliente}<br>${direccionCliente}`);
+    
+    mapaInfo.innerHTML = `
+        <p><strong style="color: #e74c3c;">UBICACION DEL CLIENTE</strong></p>
+        <p>${nombreCliente}</p>
+        <p>Direccion: ${direccionCliente}</p>
+        <p>Coordenadas: ${clientLat.toFixed(4)}, ${clientLng.toFixed(4)}</p>
+        <p style="color: #e74c3c; font-size: 0.9rem; margin-top: 1rem;">⚠️ No se pudo obtener tu ubicación GPS</p>
+        <p style="color: #666; font-size: 0.85rem;">Habilita GPS y reinicia para ver tu ubicación</p>
+    `;
+}
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
 window.mostrarMapaAdmin = window.mostrarMapaAdminMejorado;

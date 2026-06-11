@@ -44,7 +44,59 @@ document.addEventListener('DOMContentLoaded', () => {
     verificarAutenticacion();
     setupMenuItems();
     setupFormularios();
+    setupMobileMenu();
 });
+
+// ============================================
+// SETUP MOBILE MENU
+// ============================================
+
+function setupMobileMenu() {
+    const hamburger = document.getElementById('adminHamburger');
+    const sidebar = document.querySelector('.admin-sidebar');
+    
+    // Mostrar hamburguesa solo en móvil
+    function updateHamburgerVisibility() {
+        if (window.innerWidth <= 768) {
+            hamburger.style.visibility = 'visible';
+            hamburger.style.opacity = '1';
+        } else {
+            hamburger.style.visibility = 'hidden';
+            hamburger.style.opacity = '0';
+            sidebar.classList.remove('show');
+        }
+    }
+    
+    // Inicializar visibilidad
+    updateHamburgerVisibility();
+    
+    // Actualizar al cambiar tamaño
+    window.addEventListener('resize', updateHamburgerVisibility);
+    
+    // Toggle sidebar al hacer clic en hamburguesa
+    if (hamburger) {
+        hamburger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sidebar.classList.toggle('show');
+        });
+    }
+    
+    // Cerrar sidebar al hacer clic en un item del menú
+    document.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('click', () => {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.remove('show');
+            }
+        });
+    });
+    
+    // Cerrar sidebar al hacer clic fuera
+    document.addEventListener('click', (e) => {
+        if (!sidebar.contains(e.target) && !hamburger.contains(e.target)) {
+            sidebar.classList.remove('show');
+        }
+    });
+}
 
 // ============================================
 // AUTENTICACIÓN

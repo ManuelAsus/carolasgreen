@@ -65,6 +65,7 @@ body {
     top: 0;
     z-index: 100;
     box-shadow: var(--shadow-md);
+    position: relative;
 }
 
 .navbar .container {

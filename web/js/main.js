@@ -70,13 +70,23 @@ function setupNavbar() {
 
     hamburger.addEventListener('click', () => {
         navLinks.classList.toggle('show');
+        hamburger.classList.toggle('active');
     });
 
     // Cerrar menú al hacer click en un link
     document.querySelectorAll('.nav-links a').forEach(link => {
         link.addEventListener('click', () => {
             navLinks.classList.remove('show');
+            hamburger.classList.remove('active');
         });
+    });
+
+    // Cerrar menú cuando se hace click fuera
+    document.addEventListener('click', (e) => {
+        if (!hamburger.contains(e.target) && !navLinks.contains(e.target)) {
+            navLinks.classList.remove('show');
+            hamburger.classList.remove('active');
+        }
     });
 
     // Carrito
@@ -774,13 +784,21 @@ async function realizarPedido(e) {
 
         alert(`✅ ¡Pedido realizado exitosamente!\n\nNúmero de pedido: ${pedidoDoc.id}\n\nRevisa tu pedido en "Mis Pedidos" ↓`);
         
-        // Recargar sección de mis pedidos
+        // Recargar sección de mis pedidos INMEDIATAMENTE
         cargarMisPedidos();
         console.log('✅ Sección de Mis Pedidos actualizada');
         
         // Reiniciar listener para monitorear el nuevo pedido en tiempo real
         iniciarListenerPedidosEnTiempoReal();
         console.log('✅ Listener reiniciado para el nuevo pedido');
+        
+        // Desplazarse a la sección de "Mis Pedidos" para que el usuario vea el nuevo pedido
+        setTimeout(() => {
+            const misPedidosSection = document.getElementById('misPedidosSection');
+            if (misPedidosSection) {
+                misPedidosSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 500); // Pequeño delay para que termine la animación del alert
 
     } catch (error) {
         console.error('❌ Error al realizar pedido:', error);
@@ -984,7 +1002,7 @@ function cargarMisPedidos() {
             
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem;">
                 <div class="pedido-total">Total: $${pedido.total.toFixed(2)}</div>
-                <button class="btn-ver-detalle" onclick="window.mostrarMapa('${pedido.direccion.replace(/'/g, "\\'")}', '${pedido.nombre.replace(/'/g, "\\'")}', ${pedido.ubicacionCliente?.lat || 'null'}, ${pedido.ubicacionCliente?.lng || 'null'})">
+                <button class="btn-ver-detalle" onclick="window.mostrarMapa('${pedido.direccion.replace(/'/g, "\\'")}', '${pedido.nombre.replace(/'/g, "\\'")}', ${pedido.ubicacionCliente?.lat || 'null'}, ${pedido.ubicacionCliente?.lng || 'null'}, '${pedido.id}')">
                     📍 Ver Mapa
                 </button>
             </div>
@@ -1258,14 +1276,15 @@ window.cerrarMapa = cerrarMapa;
 
 // Override mostrarMapa para usar la versión mejorada que incluye repartidor
 const mostrarMapaOriginal = mostrarMapa;
-window.mostrarMapa = function(direccionCliente, nombreCliente, lat = null, lng = null) {
-    // Obtener el ID del pedido de los atributos de los elementos
-    let pedidoId = null;
-    const botones = document.querySelectorAll(`button[onclick*="mostrarMapa('${direccionCliente}'"]`);
-    if (botones.length > 0) {
-        const parent = botones[0].closest('[data-pedido-id]');
-        if (parent) {
-            pedidoId = parent.getAttribute('data-pedido-id');
+window.mostrarMapa = function(direccionCliente, nombreCliente, lat = null, lng = null, pedidoId = null) {
+    // Si no se pasó el pedidoId directamente, intentar obtenerlo del DOM
+    if (!pedidoId) {
+        const botones = document.querySelectorAll(`button[onclick*="mostrarMapa('${direccionCliente}'"]`);
+        if (botones.length > 0) {
+            const parent = botones[0].closest('[data-pedido-id]');
+            if (parent) {
+                pedidoId = parent.getAttribute('data-pedido-id');
+            }
         }
     }
     window.mostrarMapaMejorado(direccionCliente, nombreCliente, lat, lng, pedidoId);

@@ -37,6 +37,15 @@
     gap: var(--spacing-md);
 }
 
+.admin-hamburger {
+    display: none;
+    color: var(--color-blanco);
+    cursor: pointer;
+    font-size: 1.5rem;
+    align-items: center;
+    justify-content: center;
+}
+
 /* Admin Container */
 .admin-container {
     display: grid;
@@ -654,57 +663,727 @@
 }
 
 /* Responsive */
-@media (max-width: 768px) {
+
+/* Tablets (max-width: 1024px) */
+@media (max-width: 1024px) {
     .admin-container {
-        grid-template-columns: 1fr;
+        grid-template-columns: 200px 1fr;
     }
 
     .admin-sidebar {
-        display: none;
-    }
-
-    .admin-menu {
-        display: flex;
-        flex-wrap: wrap;
-        padding: var(--spacing-md);
-        background-color: var(--color-gris-2);
-        gap: var(--spacing-sm);
-    }
-
-    .admin-sidebar.show {
-        display: block;
+        padding: var(--spacing-sm) 0;
     }
 
     .menu-item {
-        flex: 1;
-        min-width: 100px;
-        padding: var(--spacing-sm);
-        text-align: center;
+        padding: var(--spacing-sm) var(--spacing-md);
+        gap: var(--spacing-sm);
+        font-size: 0.9rem;
+    }
+
+    .menu-item i {
+        font-size: 1.1rem;
+    }
+
+    .admin-main {
+        padding: var(--spacing-lg);
     }
 
     .dashboard-stats {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .chat-container {
-        grid-template-columns: 1fr;
-        height: auto;
+    .productos-admin-list {
+        grid-template-columns: repeat(2, 1fr);
     }
 
-    .chat-list {
+    .admin-section h2 {
+        font-size: 1.5rem;
+    }
+}
+
+/* Móviles (max-width: 768px) - MEJORADO */
+@media (max-width: 768px) {
+    /* ============ CONTAINER ============ */
+    .admin-container {
+        grid-template-columns: 1fr;
+        min-height: calc(100vh - 60px);
+    }
+
+    /* ============ NAVBAR ============ */
+    .admin-navbar {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    .admin-navbar .container {
+        flex-wrap: wrap;
+        gap: var(--spacing-md);
+    }
+
+    .admin-logo {
+        gap: var(--spacing-sm);
+        font-size: 1.1rem;
+    }
+
+    .admin-logo i {
+        font-size: 1.2rem;
+    }
+
+    .admin-hamburger {
+        display: flex !important;
+        order: 3;
+    }
+
+    .admin-user {
+        flex: 1;
+        gap: var(--spacing-sm);
+        justify-content: flex-end;
+    }
+
+    .admin-user button {
+        padding: 6px 12px;
+        font-size: 0.85rem;
+    }
+
+    /* ============ SIDEBAR ============ */
+    .admin-sidebar {
+        display: none;
+        padding: 0;
         border-right: none;
         border-bottom: 1px solid var(--color-gris-2);
-        max-height: 200px;
+        background-color: var(--color-blanco);
+        position: fixed;
+        top: 70px;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+
+    .admin-sidebar.show {
+        display: block;
+        animation: slideDown 0.3s ease;
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .admin-menu {
+        display: flex;
+        flex-wrap: wrap;
+        padding: 0;
+        background-color: var(--color-blanco);
+        gap: 0;
+    }
+
+    .menu-item {
+        flex: 1;
+        min-width: 80px;
+        padding: var(--spacing-md) var(--spacing-sm);
+        text-align: center;
+        border-left: none;
+        border-bottom: 3px solid transparent;
+        gap: var(--spacing-xs);
+        font-size: 0.75rem;
+    }
+
+    .menu-item i {
+        display: block;
+        width: 100%;
+        font-size: 1.2rem;
+    }
+
+    .menu-item:hover {
+        background-color: var(--color-azul-claro);
+        border-left: none;
+        border-bottom-color: var(--color-verde-oscuro);
+    }
+
+    .menu-item.active {
+        background-color: var(--color-azul-claro);
+        color: var(--color-verde-oscuro);
+        border-left: none;
+        border-bottom-color: var(--color-amarillo);
+        border-bottom-width: 3px;
+    }
+
+    /* ============ MAIN CONTENT ============ */
+    .admin-main {
+        padding: var(--spacing-md);
+    }
+
+    .admin-section h2 {
+        font-size: 1.3rem;
+        margin-bottom: var(--spacing-md);
+    }
+
+    .admin-section h3 {
+        font-size: 1.1rem;
+    }
+
+    /* ============ HEADER ============ */
+    .admin-header {
+        flex-direction: column;
+        gap: var(--spacing-md);
+        align-items: flex-start;
+    }
+
+    .admin-header h2 {
+        margin: 0;
+        width: 100%;
+    }
+
+    .admin-header button {
+        width: 100%;
+    }
+
+    /* ============ DASHBOARD STATS ============ */
+    .dashboard-stats {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+    }
+
+    .stat-card {
+        flex-direction: column;
+        text-align: center;
+        padding: var(--spacing-md);
+    }
+
+    .stat-card i {
+        font-size: 2rem;
+    }
+
+    .stat-card h3 {
+        font-size: 1.3rem;
+    }
+
+    /* ============ FILTROS ============ */
+    .admin-filters {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .admin-filters input,
+    .admin-filters select {
+        width: 100%;
+        padding: 10px;
+    }
+
+    /* ============ PEDIDOS ============ */
+    .pedidos-list {
+        gap: var(--spacing-sm);
+    }
+
+    .pedido-card {
+        padding: var(--spacing-md);
+        margin-bottom: var(--spacing-md);
+    }
+
+    .pedido-header {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .pedido-id {
+        font-size: 0.95rem;
+    }
+
+    .pedido-estado {
+        align-self: flex-start;
     }
 
     .pedido-info {
         grid-template-columns: 1fr;
+        gap: var(--spacing-sm);
+    }
+
+    .pedido-detail {
+        gap: 2px;
+    }
+
+    .pedido-detail label {
+        font-size: 0.8rem;
+    }
+
+    .pedido-detail p {
+        font-size: 0.9rem;
+    }
+
+    .pedido-items {
+        padding: var(--spacing-sm);
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .pedido-item {
+        padding: var(--spacing-xs) 0;
+        font-size: 0.85rem;
+    }
+
+    .pedido-item-cantidad {
+        margin: 0 var(--spacing-sm);
+    }
+
+    .pedido-total {
+        font-size: 1rem;
+        margin-top: var(--spacing-sm);
+    }
+
+    .pedido-actions {
+        gap: var(--spacing-sm);
+    }
+
+    .pedido-actions button {
+        flex: 1;
+        padding: 8px 6px;
+        font-size: 0.75rem;
+        min-height: 36px;
+    }
+
+    /* ============ ENTREGAS ============ */
+    .entrega-card {
+        padding: var(--spacing-md);
+    }
+
+    .entrega-mapa {
+        height: 250px;
     }
 
     .entrega-info {
         grid-template-columns: 1fr;
     }
+
+    /* ============ PRODUCTOS ADMIN ============ */
+    .productos-admin-list {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-sm);
+    }
+
+    .producto-admin-card {
+        box-shadow: var(--shadow-sm);
+    }
+
+    .producto-admin-img {
+        height: 150px;
+    }
+
+    .producto-admin-info {
+        padding: var(--spacing-sm);
+    }
+
+    .producto-admin-nombre {
+        font-size: 0.9rem;
+        margin-bottom: 4px;
+    }
+
+    .producto-admin-precio {
+        font-size: 0.95rem;
+        margin-bottom: 4px;
+    }
+
+    .producto-admin-stock {
+        font-size: 0.8rem;
+    }
+
+    .producto-admin-actions {
+        gap: 2px;
+    }
+
+    .producto-admin-actions button {
+        padding: 6px 4px;
+        font-size: 0.7rem;
+    }
+
+    /* ============ FORMULARIOS ============ */
+    .admin-header + div[style*="background: white"] {
+        padding: var(--spacing-md) !important;
+        margin-bottom: var(--spacing-md) !important;
+    }
+
+    .form-group {
+        margin-bottom: var(--spacing-md);
+    }
+
+    .form-group label {
+        font-size: 0.95rem;
+        margin-bottom: 6px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 10px;
+        font-size: 1rem;
+        border-radius: 5px;
+    }
+
+    .form-group small {
+        font-size: 0.75rem;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: var(--spacing-sm);
+        flex-direction: column;
+    }
+
+    .form-actions button {
+        width: 100%;
+        padding: 10px;
+    }
+
+    /* ============ MENUS Y GALERÍA ============ */
+    .menus-admin-list,
+    .galeria-admin-list {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-sm);
+    }
+
+    .menu-admin-card img,
+    .galeria-admin-card img {
+        height: 120px;
+    }
+
+    .menu-admin-info {
+        padding: var(--spacing-sm);
+    }
+
+    .menu-admin-info h3 {
+        font-size: 0.9rem;
+    }
+
+    .menu-admin-actions,
+    .galeria-admin-list {
+        gap: 4px;
+    }
+
+    /* ============ COMENTARIOS ============ */
+    .comentarios-list {
+        gap: var(--spacing-sm);
+    }
+
+    .comentario-admin-card {
+        padding: var(--spacing-md);
+    }
+
+    .comentario-admin-header {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .comentario-admin-autor {
+        font-size: 0.95rem;
+    }
+
+    .comentario-admin-email {
+        font-size: 0.8rem;
+    }
+
+    .comentario-admin-texto {
+        font-size: 0.9rem;
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .comentario-admin-fecha {
+        font-size: 0.75rem;
+    }
+
+    .comentario-admin-actions {
+        gap: 4px;
+    }
+
+    .comentario-admin-actions button {
+        flex: 1;
+        padding: 6px 4px;
+        font-size: 0.75rem;
+    }
+
+    /* ============ CHAT ============ */
+    .chat-container {
+        grid-template-columns: 1fr;
+        height: auto;
+        max-height: 500px;
+    }
+
+    .chat-list {
+        border-right: none;
+        border-bottom: 1px solid var(--color-gris-2);
+        max-height: 150px;
+    }
+
+    .chat-item {
+        padding: var(--spacing-sm);
+        font-size: 0.85rem;
+    }
+
+    .chat-messages {
+        max-height: 250px;
+    }
+
+    .chat-message {
+        max-width: 85%;
+        font-size: 0.9rem;
+        padding: var(--spacing-sm);
+    }
+
+    .chat-input {
+        padding: var(--spacing-sm);
+        gap: 4px;
+    }
+
+    .chat-input input {
+        padding: 8px;
+        font-size: 0.9rem;
+    }
+
+    /* ============ CONFIG ============ */
+    .config-card {
+        padding: var(--spacing-md);
+        margin-bottom: var(--spacing-md);
+    }
+
+    .config-card h3 {
+        font-size: 1rem;
+    }
+
+    .config-card img {
+        max-width: 100%;
+        max-height: 300px;
+    }
+
+    /* ============ BUTTONS ============ */
+    .btn-primary,
+    .btn-danger,
+    .btn-success {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+        min-height: 36px;
+    }
+
+    /* ============ SCROLL BEHAVIOR ============ */
+    html {
+        scroll-behavior: smooth;
+    }
 }
+
+/* Móviles muy pequeños (max-width: 480px) */
+@media (max-width: 480px) {
+    .admin-navbar {
+        padding: var(--spacing-xs) var(--spacing-md);
+    }
+
+    .admin-logo {
+        font-size: 0.95rem;
+    }
+
+    .admin-user {
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .admin-user span {
+        font-size: 0.8rem;
+    }
+
+    .admin-user button {
+        padding: 4px 8px;
+        font-size: 0.7rem;
+    }
+
+    .admin-main {
+        padding: var(--spacing-sm);
+    }
+
+    .admin-section h2 {
+        font-size: 1.1rem;
+    }
+
+    .dashboard-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .stat-card {
+        padding: var(--spacing-sm);
+    }
+
+    .stat-card i {
+        font-size: 1.5rem;
+    }
+
+    .stat-card h3 {
+        font-size: 1.1rem;
+    }
+
+    .pedidos-list {
+        gap: 8px;
+    }
+
+    .pedido-card {
+        padding: var(--spacing-sm);
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .pedido-header {
+        gap: 4px;
+    }
+
+    .pedido-id {
+        font-size: 0.85rem;
+    }
+
+    .pedido-estado {
+        font-size: 0.75rem;
+        padding: 3px 6px;
+    }
+
+    .pedido-info {
+        gap: 6px;
+    }
+
+    .pedido-actions button {
+        padding: 6px 4px;
+        font-size: 0.65rem;
+    }
+
+    .productos-admin-list {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .producto-admin-actions button {
+        padding: 4px 2px;
+        font-size: 0.65rem;
+    }
+
+    .menus-admin-list,
+    .galeria-admin-list {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        font-size: 0.95rem;
+    }
+
+    .chat-messages {
+        max-height: 200px;
+    }
+
+    .chat-message {
+        max-width: 90%;
+        font-size: 0.8rem;
+    }
+
+    .btn-primary,
+    .btn-danger,
+    .btn-success {
+        padding: 6px 10px;
+        font-size: 0.75rem;
+    }
+}
+
+    .comentario-admin-email {
+        font-size: 0.8rem;
+    }
+
+    .comentario-admin-texto {
+        font-size: 0.9rem;
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .comentario-admin-fecha {
+        font-size: 0.75rem;
+    }
+
+    .comentario-admin-actions {
+        gap: 4px;
+    }
+
+    .comentario-admin-actions button {
+        flex: 1;
+        padding: 6px 4px;
+        font-size: 0.75rem;
+    }
+
+    /* ============ CHAT ============ */
+    .chat-container {
+        grid-template-columns: 1fr;
+        height: auto;
+        max-height: 500px;
+    }
+
+    .chat-list {
+        border-right: none;
+        border-bottom: 1px solid var(--color-gris-2);
+        max-height: 150px;
+    }
+
+    .chat-item {
+        padding: var(--spacing-sm);
+        font-size: 0.85rem;
+    }
+
+    .chat-messages {
+        max-height: 250px;
+    }
+
+    .chat-message {
+        max-width: 85%;
+        font-size: 0.9rem;
+        padding: var(--spacing-sm);
+    }
+
+    .chat-input {
+        padding: var(--spacing-sm);
+        gap: 4px;
+    }
+
+    .chat-input input {
+        padding: 8px;
+        font-size: 0.9rem;
+    }
+
+    /* ============ CONFIG ============ */
+    .config-card {
+        padding: var(--spacing-md);
+        margin-bottom: var(--spacing-md);
+    }
+
+    .config-card h3 {
+        font-size: 1rem;
+    }
+
+    .config-card img {
+        max-width: 100%;
+        max-height: 300px;
+    }
+
+    /* ============ BUTTONS ============ */
+    .btn-primary,
+    .btn-danger,
+    .btn-success {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+        min-height: 36px;
+    }
+
+    /* ============ SCROLL BEHAVIOR ============ */
+    html {
+        scroll-behavior: smooth;
+    }
+}
+
+/* Móviles muy pequeños (max-width: 480px) */
 /* Menús Admin */
 .menus-admin-list {
     display: grid;

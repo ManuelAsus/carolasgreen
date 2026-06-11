@@ -1288,6 +1288,12 @@ async function eliminarImagenGaleria(imagenId) {
 
 async function cargarPreviewsConfiguracion() {
     try {
+        // Verificar que db esté inicializado
+        if (!db) {
+            console.warn('Firebase no está inicializado aún');
+            return;
+        }
+
         const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
         const configDoc = await getDoc(doc(db, 'configuracion', 'tienda'));
 
