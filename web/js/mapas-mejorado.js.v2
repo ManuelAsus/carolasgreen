@@ -331,12 +331,7 @@ window.mostrarMapaMejorado = function(direccionCliente, nombreCliente, lat = nul
 
 // Monitorear cambios en tiempo real del repartidor
 function iniciarMonitoreoRepartidor(pedidoId, destLat, destLng, mapaInfo) {
-    console.log('🔍 ======== INICIANDO MONITOREO DE REPARTIDOR ========');
-    console.log('   📦 Pedido ID:', pedidoId);
-    console.log('   📍 Destino:', destLat, destLng);
-    console.log('   🗺️  Mapa instancia:', !!mapaInstanciaCliente);
-    console.log('   🟢 Marcador repartidor:', !!marcadorRepartidor);
-    console.log('=====================================================');
+    console.log('🔍 Iniciando monitoreo de repartidor:', pedidoId);
     
     // Detener monitoreo anterior
     if (intervaloMonitoreoRepartidor) {
@@ -345,28 +340,6 @@ function iniciarMonitoreoRepartidor(pedidoId, destLat, destLng, mapaInfo) {
     
     let contadorActualizaciones = 0;
     let intentosBusqueda = 0;
-    let fallosCreadoMarcador = 0;
-    
-    // ⚡ VERIFICACIÓN INMEDIATA (sin esperar intervalo)
-    console.log('⚡ VERIFICACIÓN INMEDIATA del repartidor en localStorage...');
-    try {
-        const misPedidosCheck = JSON.parse(localStorage.getItem('misPedidos')) || [];
-        const pedidoCheck = misPedidosCheck.find(p => p.id === pedidoId);
-        console.log('   📋 Total de pedidos en localStorage:', misPedidosCheck.length);
-        if (pedidoCheck) {
-            console.log('   ✅ Pedido encontrado:', pedidoId);
-            if (pedidoCheck.repartidorUbicacion) {
-                const lat = parseFloat(pedidoCheck.repartidorUbicacion.lat);
-                const lng = parseFloat(pedidoCheck.repartidorUbicacion.lng);
-                console.log('   🟢 REPARTIDOR EXISTE en localStorage:', { lat, lng });
-                if (!isNaN(lat) && !isNaN(lng) && mapaInstanciaCliente && !marcadorRepartidor) {
-                    console.log('   ✅ CONDICIONES OK - Debería crear marcador ahora');
-                }
-            }
-        }
-    } catch (e) {
-        console.error('   ❌ Error en verificación:', e);
-    }
     
     // Monitorear cada 200ms
     intervaloMonitoreoRepartidor = setInterval(() => {
@@ -415,10 +388,7 @@ function iniciarMonitoreoRepartidor(pedidoId, destLat, destLng, mapaInfo) {
                 const shadowUrl = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png';
                 
                 try {
-                    console.log('   🟢 L.marker([' + repLat + ', ' + repLng + '])');
-                    console.log('   🟢 Agregando a mapa...');
-                    
-                    const marker = L.marker([repLat, repLng], {
+                    marcadorRepartidor = L.marker([repLat, repLng], {
                         icon: L.icon({
                             iconUrl: greenIconUrl,
                             shadowUrl: shadowUrl,
@@ -427,15 +397,10 @@ function iniciarMonitoreoRepartidor(pedidoId, destLat, destLng, mapaInfo) {
                             popupAnchor: [1, -34],
                             shadowSize: [41, 41]
                         })
-                    });
+                    }).addTo(mapaInstanciaCliente)
+                      .bindPopup(`<strong>🚗 Repartidor en camino</strong>`);
                     
-                    console.log('   🟢 Marcador creado, agregando al mapa...');
-                    marcadorRepartidor = marker.addTo(mapaInstanciaCliente).bindPopup(`<strong>🚗 Repartidor en camino</strong>`);
-                    
-                    console.log('✅✅✅ MARCADOR AGREGADO AL MAPA EXITOSAMENTE');
-                    console.log('   📍 Posición:', marcadorRepartidor.getLatLng());
-                    console.log('   🗺️  Visible en mapa: SÍ');
-                    fallosCreadoMarcador = 0;
+                    console.log('✅✅✅ MARCADOR CREADO CON ÉXITO');
                     
                     // Crear polyline
                     if (destLat !== null && destLng !== null && !isNaN(destLat) && !isNaN(destLng)) {
@@ -445,31 +410,13 @@ function iniciarMonitoreoRepartidor(pedidoId, destLat, destLng, mapaInfo) {
                             opacity: 0.7,
                             dashArray: '5, 5'
                         }).addTo(mapaInstanciaCliente);
-                        console.log('   ✅ Polyline creada');
                     }
                 } catch (e) {
-                    fallosCreadoMarcador++;
-                    console.error('❌ ERROR creando marcador (intento ' + fallosCreadoMarcador + '):', e);
-                    console.error('   Detalles:', e.message);
+                    console.error('❌ Error creando marcador:', e);
                     marcadorRepartidor = null;
-                    if (fallosCreadoMarcador < 5) {
-                        console.log('   🔄 Se reintentará en próxima iteración...');
-                    }
                 }
             } else if (!mapaValido && !marcadorRepartidor) {
-                if (intentosBusqueda % 50 === 0) {
-                    console.log('⏳ Repartidor en storage pero mapa no está listo. Esperando...');
-                    console.log('   mapaInstanciaCliente:', !!mapaInstanciaCliente);
-                    if (mapaInstanciaCliente) {
-                        try {
-                            const container = mapaInstanciaCliente.getContainer();
-                            console.log('   container:', !!container);
-                            console.log('   offsetParent:', container ? container.offsetParent : 'N/A');
-                        } catch (e) {
-                            console.error('   Error verificando mapa:', e.message);
-                        }
-                    }
-                }
+                console.log('⏳ Repartidor en storage pero mapa no está listo...');
             }
             
             // Actualizar posición del marcador
@@ -518,7 +465,7 @@ function iniciarMonitoreoRepartidor(pedidoId, destLat, destLng, mapaInfo) {
         } catch (error) {
             console.error('❌ Error en monitoreo:', error);
         }
-    }, 100); // ⚡ Intervalo de 100ms (RÁPIDO para detección inmediata)
+    }, 200);
 }
 
 // Alias para compatibilidad

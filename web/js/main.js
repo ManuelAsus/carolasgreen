@@ -689,6 +689,16 @@ async function realizarPedido(e) {
 
     await geoPromise;
     
+    // 🔧 FALLBACK: Si no hay GPS, usar coordenadas por defecto de la tienda
+    if (!ubicacionCliente.lat || !ubicacionCliente.lng) {
+        console.warn('⚠️ Sin GPS del cliente - usando coordenadas por defecto');
+        ubicacionCliente = {
+            lat: 17.6936260,   // Emiliano Zapata, Tabasco (ubicación tienda)
+            lng: -91.6397346
+        };
+        console.log('📍 Usando ubicación por defecto:', ubicacionCliente);
+    }
+    
     // Calcular total
     const total = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
     console.log('💰 Total del pedido: $' + total.toFixed(2));
@@ -725,18 +735,13 @@ async function realizarPedido(e) {
         // Crear pedido en Firestore
         console.log('🔄 Creando pedido en Firestore con ubicación:', ubicacionCliente);
         
-        // IMPORTANTE: Solo guardar ubicacionCliente si se obtuvieron coordenadas GPS válidas
-        let ubicacionFirestore = null;
-        if (ubicacionCliente.lat && ubicacionCliente.lng) {
-            ubicacionFirestore = {
-                lat: ubicacionCliente.lat,
-                lng: ubicacionCliente.lng,
-                timestamp: new Date().toISOString()
-            };
-            console.log('✅ GPS válido, guardando coordenadas:', ubicacionFirestore);
-        } else {
-            console.warn('⚠️ Sin GPS - admin mostrará ubicación por defecto');
-        }
+        // IMPORTANTE: Siempre hay ubicación (GPS o fallback)
+        const ubicacionFirestore = {
+            lat: ubicacionCliente.lat,
+            lng: ubicacionCliente.lng,
+            timestamp: new Date().toISOString()
+        };
+        console.log('✅ Guardando ubicación del cliente:', ubicacionFirestore);
         
         const pedidoDoc = await addDoc(collection(db, 'pedidos'), {
             nombre: nombre,
@@ -749,12 +754,16 @@ async function realizarPedido(e) {
             estado: 'pendiente',
             fecha: new Date(),
             visto: false,
-            ubicacionCliente: ubicacionFirestore
+            ubicacionCliente: ubicacionFirestore,
+            estado: 'pendiente',
+            repartidorUbicacion: null,
+            repartidorNombre: null
         });
         console.log('✅ Pedido creado en Firestore:', pedidoDoc.id);
 
         // Guardar en localStorage ANTES de limpiar el carrito
         let misPedidos = JSON.parse(localStorage.getItem('misPedidos')) || [];
+        const fechaActual = new Date();
         const nuevoPedido = {
             id: pedidoDoc.id,
             nombre: nombre,
@@ -764,8 +773,12 @@ async function realizarPedido(e) {
             items: carrito,  // Copiar array completo
             total: total,
             estado: 'pendiente',
-            fecha: new Date().toISOString(),
-            comprobante: comprobante
+            fecha: fechaActual.toISOString(),
+            fechaFormato: fechaActual.toLocaleString('es-MX'),
+            comprobante: comprobante,
+            ubicacionCliente: ubicacionFirestore,
+            repartidorUbicacion: null,
+            repartidorNombre: null
         };
         console.log('📝 Nuevo pedido a guardar:', nuevoPedido);
         
@@ -784,21 +797,13 @@ async function realizarPedido(e) {
 
         alert(`✅ ¡Pedido realizado exitosamente!\n\nNúmero de pedido: ${pedidoDoc.id}\n\nRevisa tu pedido en "Mis Pedidos" ↓`);
         
-        // Recargar sección de mis pedidos INMEDIATAMENTE
+        // Recargar sección de mis pedidos inmediatamente
         cargarMisPedidos();
         console.log('✅ Sección de Mis Pedidos actualizada');
         
         // Reiniciar listener para monitorear el nuevo pedido en tiempo real
         iniciarListenerPedidosEnTiempoReal();
         console.log('✅ Listener reiniciado para el nuevo pedido');
-        
-        // Desplazarse a la sección de "Mis Pedidos" para que el usuario vea el nuevo pedido
-        setTimeout(() => {
-            const misPedidosSection = document.getElementById('misPedidosSection');
-            if (misPedidosSection) {
-                misPedidosSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        }, 500); // Pequeño delay para que termine la animación del alert
 
     } catch (error) {
         console.error('❌ Error al realizar pedido:', error);
@@ -905,9 +910,9 @@ function cerrarModal(modalId) {
 
 function cargarMisPedidos() {
     const misPedidosRaw = localStorage.getItem('misPedidos');
-    console.log('� misPedidos raw desde localStorage:', misPedidosRaw);
+    console.log('misPedidos raw desde localStorage:', misPedidosRaw);
     
-    const misPedidos = JSON.parse(misPedidosRaw) || [];
+    let misPedidos = JSON.parse(misPedidosRaw) || [];
     const content = document.getElementById('misPedidosContent');
     
     if (!content) {
@@ -915,14 +920,17 @@ function cargarMisPedidos() {
         return;
     }
     
-    console.log('📋 Mis Pedidos cargados:', misPedidos.length, 'pedidos');
+    // 🔥 FILTRAR: Solo mostrar pedidos que NO están completados
+    misPedidos = misPedidos.filter(pedido => pedido.estado !== 'Completado' && pedido.estado !== 'completado');
+    
+    console.log('📋 Mis Pedidos cargados:', misPedidos.length, 'pedidos activos (completados excluidos)');
     
     if (!Array.isArray(misPedidos) || misPedidos.length === 0) {
-        console.log('📭 No hay pedidos, mostrando estado vacío');
+        console.log('📭 No hay pedidos activos, mostrando estado vacío');
         content.innerHTML = `
             <div class="mis-pedidos-vacio">
                 <i class="fas fa-box"></i>
-                <p>No tienes pedidos aún</p>
+                <p>No tienes pedidos activos</p>
                 <a href="#productos" class="btn-primary" style="display: inline-block; margin-top: 1rem;">Hacer un Pedido</a>
             </div>
         `;
@@ -931,6 +939,50 @@ function cargarMisPedidos() {
     
     content.innerHTML = '';
     let pedidosValidos = 0;
+    
+    // Limpiar pedidos antiguos y actualizar formato de fecha
+    misPedidos = misPedidos.map(pedido => {
+        if (!pedido.fechaFormato && pedido.fecha) {
+            try {
+                let fecha;
+                
+                // Manejar Firebase Timestamp (objeto con seconds y nanoseconds)
+                if (pedido.fecha && typeof pedido.fecha === 'object' && pedido.fecha.seconds) {
+                    fecha = new Date(pedido.fecha.seconds * 1000);
+                } else if (typeof pedido.fecha === 'string') {
+                    fecha = new Date(pedido.fecha);
+                } else if (typeof pedido.fecha === 'number') {
+                    fecha = new Date(pedido.fecha);
+                } else if (pedido.fecha instanceof Date) {
+                    fecha = pedido.fecha;
+                } else if (pedido.fecha && pedido.fecha.toDate) {
+                    fecha = pedido.fecha.toDate();
+                } else {
+                    fecha = new Date(pedido.fecha);
+                }
+                
+                if (fecha && !isNaN(fecha.getTime())) {
+                    pedido.fechaFormato = fecha.toLocaleString('es-MX', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    console.log('OK: Fecha actualizada para pedido', pedido.id, '-', pedido.fechaFormato);
+                } else {
+                    pedido.fechaFormato = 'Fecha no disponible';
+                }
+            } catch (e) {
+                console.warn('Error procesando fecha para pedido:', pedido.id, e);
+                pedido.fechaFormato = 'Fecha no disponible';
+            }
+        }
+        return pedido;
+    });
+    
+    // Actualizar localStorage con fechas formateadas
+    localStorage.setItem('misPedidos', JSON.stringify(misPedidos));
     
     misPedidos.forEach((pedido, index) => {
         // Validar que el pedido tenga la estructura correcta
@@ -944,14 +996,8 @@ function cargarMisPedidos() {
             return; // Saltar este pedido si está corrupto
         }
         
-        const fecha = new Date(pedido.fecha);
-        const fechaFormato = fecha.toLocaleDateString('es-MX', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        // Procesar fecha de forma segura
+        let fechaFormato = pedido.fechaFormato || 'Fecha no disponible';
         
         const itemsHtml = pedido.items.map(item => {
             // Validar que el item tenga nombre y precio
@@ -1028,12 +1074,12 @@ function iniciarListenerPedidosEnTiempoReal() {
         // Obtener todos los IDs de pedidos locales
         const misPedidosLocal = JSON.parse(localStorage.getItem('misPedidos')) || [];
         if (misPedidosLocal.length === 0) {
-            console.log('📭 No hay pedidos locales, no iniciando listener');
+            console.warn('⚠️ No hay pedidos locales para escuchar. Nota: El listener se iniciará cuando se cree un pedido');
             return;
         }
         
         const pedidoIds = misPedidosLocal.map(p => p.id);
-        console.log('📋 IDs de pedidos a monitorear:', pedidoIds);
+        console.log('📋 IDs de pedidos a monitorear:', pedidoIds.length, 'pedidos');
         
         // Cancelar listeners anteriores si existen
         if (unsubscribePedidos && Array.isArray(unsubscribePedidos)) {
@@ -1058,23 +1104,30 @@ function iniciarListenerPedidosEnTiempoReal() {
                     const misPedidosLocal = JSON.parse(localStorage.getItem('misPedidos')) || [];
                     const misPedidosActualizados = misPedidosLocal.map(pedidoLocal => {
                         if (pedidoLocal.id === pedidoFirestore.id) {
-                            // Actualizar estado, ubicación del cliente Y ubicación del repartidor
-                            return {
+                            // Copiar TODO desde Firestore, no solo campos específicos
+                            const actualizado = {
                                 ...pedidoLocal,
-                                estado: pedidoFirestore.estado,
-                                ubicacionCliente: pedidoFirestore.ubicacionCliente || pedidoLocal.ubicacionCliente,
-                                repartidorUbicacion: pedidoFirestore.repartidorUbicacion || pedidoLocal.repartidorUbicacion
+                                ...pedidoFirestore  // Esto sobrescribe con todos los datos de Firestore
                             };
+                            console.log('✅ Pedido actualizado en localStorage');
+                            console.log('   - Estado:', actualizado.estado);
+                            console.log('   - Repartidor:', actualizado.repartidorUbicacion ? 'SÍ' : 'NO');
+                            return actualizado;
                         }
                         return pedidoLocal;
                     });
                     
                     localStorage.setItem('misPedidos', JSON.stringify(misPedidosActualizados));
-                    console.log('✅ Pedido actualizado en localStorage:', pedidoFirestore.id, '- Estado:', pedidoFirestore.estado);
-                    console.log('🚗 Ubicación del repartidor:', pedidoFirestore.repartidorUbicacion);
+                    console.log('✅ localStorage sincronizado con Firestore');
                     
                     // Actualizar SOLO el elemento DOM correspondiente sin llamar a cargarMisPedidos() (evita loop infinito)
                     actualizarPedidoEnUI(pedidoFirestore.id, pedidoFirestore.estado);
+                    
+                    // Si hay repartidor, actualizar el botón del mapa
+                    if (pedidoFirestore.repartidorUbicacion && pedidoFirestore.repartidorUbicacion.lat && pedidoFirestore.repartidorUbicacion.lng) {
+                        actualizarBotonesMapaEnUI(pedidoFirestore.id);
+                        console.log('🟢 Repartidor detectado en listener, actualizando UI');
+                    }
                 }
             }, (error) => {
                 console.error(`❌ Error en listener del pedido ${pedidoId}:`, error);
@@ -1097,7 +1150,20 @@ function actualizarPedidoEnUI(pedidoId, nuevoEstado) {
         if (estadoElement) {
             estadoElement.textContent = nuevoEstado.charAt(0).toUpperCase() + nuevoEstado.slice(1);
             estadoElement.className = `pedido-estado ${nuevoEstado}`;
-            console.log('🎨 UI actualizado para pedido:', pedidoId);
+            console.log('🎨 UI actualizado para pedido:', pedidoId, 'Estado:', nuevoEstado);
+        }
+    }
+}
+
+// Función para actualizar el botón del mapa cuando hay repartidor
+function actualizarBotonesMapaEnUI(pedidoId) {
+    const pedidoElement = document.querySelector(`[data-pedido-id="${pedidoId}"]`);
+    if (pedidoElement) {
+        const btnMapa = pedidoElement.querySelector('.btn-ver-detalle');
+        if (btnMapa) {
+            btnMapa.style.backgroundColor = '#27ae60';
+            btnMapa.style.borderColor = '#27ae60';
+            console.log('🎨 Botón de mapa actualizado para pedido:', pedidoId);
         }
     }
 }
@@ -1274,18 +1340,10 @@ window.realizarPedido = realizarPedido;
 window.cargarMisPedidos = cargarMisPedidos;
 window.cerrarMapa = cerrarMapa;
 
-// Override mostrarMapa para usar la versión mejorada que incluye repartidor
-const mostrarMapaOriginal = mostrarMapa;
+// 🔥 OVERRIDE CRÍTICO: Usar mostrarMapaMejorado que incluye repartidor
 window.mostrarMapa = function(direccionCliente, nombreCliente, lat = null, lng = null, pedidoId = null) {
-    // Si no se pasó el pedidoId directamente, intentar obtenerlo del DOM
-    if (!pedidoId) {
-        const botones = document.querySelectorAll(`button[onclick*="mostrarMapa('${direccionCliente}'"]`);
-        if (botones.length > 0) {
-            const parent = botones[0].closest('[data-pedido-id]');
-            if (parent) {
-                pedidoId = parent.getAttribute('data-pedido-id');
-            }
-        }
-    }
+    console.log('📍 mostrarMapa() llamado con:', { direccionCliente, nombreCliente, lat, lng, pedidoId });
+    
+    // Pasar directamente a la versión mejorada
     window.mostrarMapaMejorado(direccionCliente, nombreCliente, lat, lng, pedidoId);
 };
