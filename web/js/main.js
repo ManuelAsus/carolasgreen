@@ -1,5 +1,5 @@
 // Importar Firebase
-import { db, storage } from './firebase-config.js';
+import { db } from './firebase-config.js';
 import { 
     collection, 
     getDocs, 
@@ -13,11 +13,59 @@ import {
     orderBy,
     onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js";
-import { 
-    ref, 
-    uploadBytes, 
-    getDownloadURL 
-} from "https://www.gstatic.com/firebasejs/10.14.0/firebase-storage.js";
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    });
+}
+
+function chunkBase64(value, chunkSize = 700 * 1024) {
+    if (!value) return [];
+    const chunks = [];
+    for (let i = 0; i < value.length; i += chunkSize) {
+        chunks.push(value.slice(i, i + chunkSize));
+    }
+    return chunks;
+}
+
+function getStoredAsset(item, field) {
+    const chunkField = `${field}Chunks`;
+    if (typeof item?.[field] === 'string' && item[field].startsWith('data:')) {
+        return item[field];
+    }
+    if (Array.isArray(item?.[chunkField]) && item[chunkField].length) {
+        return item[chunkField].join('');
+    }
+    return item?.[field] || '';
+}
+
+function renderComprobanteLink(pedido) {
+    const comprobanteValue = getStoredAsset(pedido, 'comprobante');
+    if (!comprobanteValue) return '';
+    const nombre = pedido.comprobanteNombre || 'comprobante';
+    const tipo = pedido.comprobanteTipo || 'application/octet-stream';
+    return `<a href="${comprobanteValue}" target="_blank" download="${nombre}" style="display:inline-block;margin-top:0.5rem; color:#1a7f37; font-weight:600;">📄 Descargar comprobante (${tipo.split('/')[1] || 'archivo'})</a>`;
+}
+
+function prepareAssetForFirestore(base64Value, field) {
+    const chunks = chunkBase64(base64Value);
+    if (chunks.length > 1) {
+        return {
+            [`${field}`]: null,
+            [`${field}Chunks`]: chunks,
+            [`${field}Size`]: base64Value.length
+        };
+    }
+    return {
+        [`${field}`]: base64Value,
+        [`${field}Chunks`]: [],
+        [`${field}Size`]: base64Value.length
+    };
+}
 
 // ============================================
 // VARIABLES GLOBALES
@@ -151,10 +199,11 @@ function mostrarProductos(filtro) {
         
         const stockClass = producto.stock > 0 ? 'disponible' : 'agotado';
         const stockText = producto.stock > 0 ? `Stock: ${producto.stock}` : 'Agotado';
+        const imagenProducto = getStoredAsset(producto, 'imagen');
 
         card.innerHTML = `
             <div class="producto-img">
-                ${producto.imagen ? `<img src="${producto.imagen}" alt="${producto.nombre}" style="width: 100%; height: 100%; object-fit: cover;">` : '🥗'}
+                ${imagenProducto ? `<img src="${imagenProducto}" alt="${producto.nombre}" style="width: 100%; height: 100%; object-fit: cover;">` : '🥗'}
             </div>
             <div class="producto-info">
                 <div class="producto-nombre">${producto.nombre}</div>
@@ -490,8 +539,9 @@ function mostrarMenus(menus) {
                 <h3>${menu.nombre}</h3>
         `;
 
-        if (menu.imagen) {
-            contenido += `<img src="${menu.imagen}" alt="${menu.nombre}" class="menu-card-image" style="cursor: pointer;">`;
+        const imagenMenu = getStoredAsset(menu, 'imagen');
+        if (imagenMenu) {
+            contenido += `<img src="${imagenMenu}" alt="${menu.nombre}" class="menu-card-image" style="cursor: pointer;">`;
             
             if (menu.tipo === 'pdf') {
                 contenido += `
@@ -516,8 +566,9 @@ function mostrarMenus(menus) {
 // Función para abrir modal con menú completo
 window.abrirMenuModal = function(menuId) {
     const menu = menus.find(m => m.id === menuId);
+    const imagenMenu = getStoredAsset(menu, 'imagen');
     
-    if (!menu || !menu.imagen) {
+    if (!menu || !imagenMenu) {
         alert('No se puede cargar el menú');
         return;
     }
@@ -525,7 +576,7 @@ window.abrirMenuModal = function(menuId) {
     const modalContent = document.getElementById('menuModalContent');
     modalContent.innerHTML = `
         <h2>${menu.nombre}</h2>
-        <img src="${menu.imagen}" alt="${menu.nombre}" style="width: 100%; height: auto; margin-top: 1rem; border-radius: 10px;">
+        <img src="${imagenMenu}" alt="${menu.nombre}" style="width: 100%; height: auto; margin-top: 1rem; border-radius: 10px;">
         <p style="text-align: center; margin-top: 1rem; color: #666;">
             ${menu.tipo === 'pdf' ? '📄 Menú PDF' : '🖼️ Menú Imagen'}
         </p>
@@ -584,10 +635,11 @@ function mostrarGaleria(galeria) {
     }
 
     galeria.forEach(imagen => {
+        const imagenGaleria = getStoredAsset(imagen, 'url');
         const div = document.createElement('div');
         div.className = 'galeria-card';
         div.innerHTML = `
-            <img src="${imagen.url}" alt="${imagen.titulo || 'Imagen'}">
+            <img src="${imagenGaleria}" alt="${imagen.titulo || 'Imagen'}">
         `;
         grid.appendChild(div);
     });
@@ -604,19 +656,19 @@ async function cargarConfiguracion() {
         if (configDoc.exists()) {
             const config = configDoc.data();
             
-            // Cambiar logo
-            if (config.logo) {
+            const logoBase64 = getStoredAsset(config, 'logo');
+            if (logoBase64) {
                 const logoElement = document.getElementById('logoTienda');
                 if (logoElement) {
-                    logoElement.src = config.logo;
+                    logoElement.src = logoBase64;
                 }
             }
             
-            // Cambiar imagen principal
-            if (config.imagenPrincipal) {
+            const imagenPrincipalBase64 = getStoredAsset(config, 'imagenPrincipal');
+            if (imagenPrincipalBase64) {
                 const imagenElement = document.getElementById('imagenPrincipal');
                 if (imagenElement) {
-                    imagenElement.src = config.imagenPrincipal;
+                    imagenElement.src = imagenPrincipalBase64;
                 }
             }
         }
@@ -712,6 +764,7 @@ async function realizarPedido(e) {
 
     try {
         let comprobante = null;
+        let comprobanteMeta = null;
 
         // Si es transferencia, validar comprobante
         if (metodoPago === 'transferencia') {
@@ -723,18 +776,24 @@ async function realizarPedido(e) {
                 return;
             }
 
-            // Validar tamaño del archivo (máximo 10MB)
-            const maxSize = 10 * 1024 * 1024; // 10MB
+            // Aceptar archivos más grandes y convertir a base64 con fragmentación cuando sea necesario
+            const maxSize = 20 * 1024 * 1024;
             if (archivoComprobante.size > maxSize) {
-                alert('❌ El comprobante debe ser menor a 10MB');
+                alert('❌ El comprobante no debe superar 20 MB');
                 return;
             }
 
-            console.log('📤 Subiendo comprobante:', archivoComprobante.name);
-            const storageRef = ref(storage, `comprobantes/${Date.now()}_${archivoComprobante.name}`);
-            await uploadBytes(storageRef, archivoComprobante);
-            comprobante = await getDownloadURL(storageRef);
-            console.log('✅ Comprobante subido:', comprobante);
+            console.log('📤 Convirtiendo comprobante a base64:', archivoComprobante.name);
+            const comprobanteBase64 = await fileToBase64(archivoComprobante);
+            const comprobanteAsset = prepareAssetForFirestore(comprobanteBase64, 'comprobante');
+            comprobante = comprobanteAsset.comprobante;
+            comprobanteMeta = {
+                comprobanteChunks: comprobanteAsset.comprobanteChunks,
+                comprobanteTipo: archivoComprobante.type || 'application/octet-stream',
+                comprobanteNombre: archivoComprobante.name,
+                comprobanteSize: archivoComprobante.size
+            };
+            console.log('✅ Comprobante listo como base64 (fragmentado:', comprobanteAsset.comprobanteChunks.length, 'partes)');
         } else {
             console.log('💵 Método: Efectivo en Domicilio');
         }
@@ -756,6 +815,10 @@ async function realizarPedido(e) {
             direccion: direccion,
             metodoPago: metodoPago,
             comprobante: comprobante,
+            comprobanteChunks: metodoPago === 'transferencia' ? (comprobanteMeta?.comprobanteChunks || []) : [],
+            comprobanteTipo: metodoPago === 'transferencia' ? (comprobanteMeta?.comprobanteTipo || 'application/octet-stream') : null,
+            comprobanteNombre: metodoPago === 'transferencia' ? (comprobanteMeta?.comprobanteNombre || 'comprobante') : null,
+            comprobanteSize: metodoPago === 'transferencia' ? (comprobanteMeta?.comprobanteSize || 0) : 0,
             items: carrito,
             total: total,
             estado: 'pendiente',
@@ -777,12 +840,16 @@ async function realizarPedido(e) {
             telefono: telefono,
             direccion: direccion,
             metodoPago: metodoPago,
-            items: carrito,  // Copiar array completo
+            items: carrito,
             total: total,
             estado: 'pendiente',
             fecha: fechaActual.toISOString(),
             fechaFormato: fechaActual.toLocaleString('es-MX'),
             comprobante: comprobante,
+            comprobanteChunks: comprobanteMeta?.comprobanteChunks || [],
+            comprobanteTipo: comprobanteMeta?.comprobanteTipo || null,
+            comprobanteNombre: comprobanteMeta?.comprobanteNombre || null,
+            comprobanteSize: comprobanteMeta?.comprobanteSize || 0,
             ubicacionCliente: ubicacionFirestore,
             repartidorUbicacion: null,
             repartidorNombre: null
@@ -1055,6 +1122,7 @@ function cargarMisPedidos() {
             
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem;">
                 <div class="pedido-total">Total: $${pedido.total.toFixed(2)}</div>
+                ${renderComprobanteLink(pedido)}
                 <button class="btn-ver-detalle" onclick="window.mostrarMapa('${pedido.direccion.replace(/'/g, "\\'")}', '${pedido.nombre.replace(/'/g, "\\'")}', ${pedido.ubicacionCliente?.lat || 'null'}, ${pedido.ubicacionCliente?.lng || 'null'}, '${pedido.id}')">
                     📍 Ver Mapa
                 </button>

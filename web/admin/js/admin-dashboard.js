@@ -25,6 +25,42 @@ function fileToBase64(file) {
     });
 }
 
+function chunkBase64(value, chunkSize = 700 * 1024) {
+    if (!value) return [];
+    const chunks = [];
+    for (let i = 0; i < value.length; i += chunkSize) {
+        chunks.push(value.slice(i, i + chunkSize));
+    }
+    return chunks;
+}
+
+function getStoredAsset(item, field) {
+    const chunkField = `${field}Chunks`;
+    if (typeof item?.[field] === 'string' && item[field].startsWith('data:')) {
+        return item[field];
+    }
+    if (Array.isArray(item?.[chunkField]) && item[chunkField].length) {
+        return item[chunkField].join('');
+    }
+    return item?.[field] || '';
+}
+
+function prepareAssetForFirestore(base64Value, field) {
+    const chunks = chunkBase64(base64Value);
+    if (chunks.length > 1) {
+        return {
+            [field]: null,
+            [`${field}Chunks`]: chunks,
+            [`${field}Size`]: base64Value.length
+        };
+    }
+    return {
+        [field]: base64Value,
+        [`${field}Chunks`]: [],
+        [`${field}Size`]: base64Value.length
+    };
+}
+
 // ============================================
 // UTILIDAD: CONVERTIR PDF A IMAGEN BASE64
 // ============================================
@@ -457,13 +493,15 @@ async function guardarProducto(e) {
             imagenBase64 = await fileToBase64(archivoImagen);
         }
 
+        const imagenAsset = imagenBase64 ? prepareAssetForFirestore(imagenBase64, 'imagen') : { imagen: null, imagenChunks: [], imagenSize: 0 };
+
         await addDoc(collection(db, 'productos'), {
             nombre: nombre,
             categoria: categoria,
             precio: precio,
             ingredientes: ingredientes,
             stock: stock,
-            imagen: imagenBase64,
+            ...imagenAsset,
             creado: new Date()
         });
 
@@ -492,9 +530,10 @@ async function mostrarProductos() {
         const card = document.createElement('div');
         card.className = 'producto-admin-card';
 
+        const imagenProducto = getStoredAsset(producto, 'imagen');
         card.innerHTML = `
             <div class="producto-admin-img">
-                ${producto.imagen ? `<img src="${producto.imagen}" alt="${producto.nombre}" style="width: 100%; height: 100%; object-fit: cover;">` : '🥗'}
+                ${imagenProducto ? `<img src="${imagenProducto}" alt="${producto.nombre}" style="width: 100%; height: 100%; object-fit: cover;">` : '🥗'}
             </div>
             <div class="producto-admin-info">
                 <div class="producto-admin-nombre">${producto.nombre}</div>
@@ -595,6 +634,10 @@ async function mostrarPedidos() {
 
     pedidosFiltrados.forEach(pedido => {
         const fecha = new Date(pedido.fecha?.toDate?.() || pedido.fecha).toLocaleDateString('es-MX');
+        const comprobanteValue = getStoredAsset(pedido, 'comprobante');
+        const comprobanteHTML = comprobanteValue
+            ? `<div class="pedido-comprobante"><p><strong>Comprobante:</strong> <a href="${comprobanteValue}" target="_blank" download="${pedido.comprobanteNombre || 'comprobante'}">Descargar</a></p></div>`
+            : '';
         const itemsHTML = pedido.items.map(item =>
             `<div class="pedido-item">
                 <span class="pedido-item-nombre">${item.nombre}</span>
@@ -646,7 +689,7 @@ async function mostrarPedidos() {
                 ${itemsHTML}
                 <div class="pedido-total">Total: $${pedido.total?.toFixed(2)}</div>
             </div>
-            ${pedido.comprobante ? `<div class="pedido-comprobante"><p><strong>Comprobante:</strong> <a href="${pedido.comprobante}" target="_blank">Ver</a></p></div>` : ''}
+            ${comprobanteHTML}
             <div class="pedido-actions">
                 <button class="btn-secondary" onclick="mostrarMapaAdmin('${pedido.id}', '${pedido.direccion}', '${pedido.nombre}', ${pedido.ubicacionCliente?.lat || 'null'}, ${pedido.ubicacionCliente?.lng || 'null'})">📍 Ver Mapa</button>
                 <button class="btn-secondary" onclick="cambiarEstadoPedido('${pedido.id}', 'visto')">Marcar Visto</button>
@@ -1139,7 +1182,8 @@ async function guardarMenu(e) {
         if (tipo === 'imagen') {
             const archivo = document.getElementById('imagenMenu').files[0];
             if (archivo) {
-                dataMenu.imagen = await fileToBase64(archivo);
+                const imagenBase64 = await fileToBase64(archivo);
+                Object.assign(dataMenu, prepareAssetForFirestore(imagenBase64, 'imagen'));
             }
         } else if (tipo === 'pdf') {
             const archivoPdf = document.getElementById('archivoMenuPdf').files[0];
@@ -1151,9 +1195,8 @@ async function guardarMenu(e) {
                 }
 
                 alert('⏳ Convirtiendo PDF a imagen, esto puede tomar unos segundos...');
-                
-                // Convertir PDF a imagen
-                dataMenu.imagen = await pdfToImage(archivoPdf);
+                const imagenBase64 = await pdfToImage(archivoPdf);
+                Object.assign(dataMenu, prepareAssetForFirestore(imagenBase64, 'imagen'));
             } else {
                 alert('❌ Selecciona un archivo PDF');
                 return;
@@ -1181,9 +1224,10 @@ async function mostrarMenus() {
         const div = document.createElement('div');
         div.className = 'menu-admin-card';
         
+        const imagenMenu = getStoredAsset(menu, 'imagen');
         let contenido = '<div class="menu-admin-info">';
-        if (menu.imagen) {
-            contenido += `<img src="${menu.imagen}" alt="${menu.nombre}">`;
+        if (imagenMenu) {
+            contenido += `<img src="${imagenMenu}" alt="${menu.nombre}">`;
         } else if (menu.tipo === 'pdf') {
             contenido += `<div style="width: 100%; height: 150px; background-color: #f0f0f0; display: flex; align-items: center; justify-content: center; border-radius: 5px;"><span style="font-size: 3rem;">📄</span></div>`;
         }
@@ -1234,10 +1278,11 @@ async function guardarImagenGaleria(e) {
         const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
 
         const imagenBase64 = await fileToBase64(archivo);
+        const imagenAsset = prepareAssetForFirestore(imagenBase64, 'url');
 
         await addDoc(collection(db, 'galeria'), {
             titulo: titulo || 'Sin título',
-            url: imagenBase64,
+            ...imagenAsset,
             creado: new Date()
         });
 
@@ -1258,10 +1303,11 @@ async function mostrarGaleria() {
     container.innerHTML = '';
 
     galeria.forEach(imagen => {
+        const imagenGaleria = getStoredAsset(imagen, 'url');
         const div = document.createElement('div');
         div.className = 'galeria-admin-card';
         div.innerHTML = `
-            <img src="${imagen.url}" alt="${imagen.titulo}">
+            <img src="${imagenGaleria}" alt="${imagen.titulo}">
             <button class="galeria-admin-delete" onclick="eliminarImagenGaleria('${imagen.id}')">Eliminar</button>
         `;
         container.appendChild(div);
@@ -1324,10 +1370,11 @@ async function guardarLogo(e) {
         const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
 
         const logoBase64 = await fileToBase64(archivo);
+        const logoAsset = prepareAssetForFirestore(logoBase64, 'logo');
 
-        await setDoc(doc(db, 'configuracion', 'tienda'), { logo: logoBase64 }, { merge: true });
+        await setDoc(doc(db, 'configuracion', 'tienda'), logoAsset, { merge: true });
 
-        document.getElementById('previewLogo').src = logoBase64;
+        document.getElementById('previewLogo').src = getStoredAsset(logoAsset, 'logo') || logoBase64;
         document.getElementById('previewLogo').style.display = 'block';
         document.getElementById('archivoLogo').value = '';
         alert('✅ Logo actualizado');
@@ -1361,10 +1408,11 @@ async function guardarImagenPrincipal(e) {
         const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
 
         const imagenBase64 = await fileToBase64(archivo);
+        const imagenAsset = prepareAssetForFirestore(imagenBase64, 'imagenPrincipal');
 
-        await setDoc(doc(db, 'configuracion', 'tienda'), { imagenPrincipal: imagenBase64 }, { merge: true });
+        await setDoc(doc(db, 'configuracion', 'tienda'), imagenAsset, { merge: true });
 
-        document.getElementById('previewImagenPrincipal').src = imagenBase64;
+        document.getElementById('previewImagenPrincipal').src = getStoredAsset(imagenAsset, 'imagenPrincipal') || imagenBase64;
         document.getElementById('previewImagenPrincipal').style.display = 'block';
         document.getElementById('archivoImagenPrincipal').value = '';
         alert('✅ Imagen principal actualizada');
