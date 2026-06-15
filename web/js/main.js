@@ -23,7 +23,7 @@ function fileToBase64(file) {
     });
 }
 
-function chunkBase64(value, chunkSize = 700 * 1024) {
+function chunkBase64(value, chunkSize = 300 * 1024) {
     if (!value) return [];
     const chunks = [];
     for (let i = 0; i < value.length; i += chunkSize) {
@@ -45,10 +45,43 @@ function getStoredAsset(item, field) {
 
 function renderComprobanteLink(pedido) {
     const comprobanteValue = getStoredAsset(pedido, 'comprobante');
-    if (!comprobanteValue) return '';
-    const nombre = pedido.comprobanteNombre || 'comprobante';
-    const tipo = pedido.comprobanteTipo || 'application/octet-stream';
-    return `<a href="${comprobanteValue}" target="_blank" download="${nombre}" style="display:inline-block;margin-top:0.5rem; color:#1a7f37; font-weight:600;">📄 Descargar comprobante (${tipo.split('/')[1] || 'archivo'})</a>`;
+    if (comprobanteValue) {
+        const nombre = pedido.comprobanteNombre || 'comprobante';
+        const tipo = pedido.comprobanteTipo || 'application/octet-stream';
+        return `<a href="${comprobanteValue}" target="_blank" download="${nombre}" style="display:inline-block;margin-top:0.5rem; color:#1a7f37; font-weight:600;">📄 Descargar comprobante (${tipo.split('/')[1] || 'archivo'})</a>`;
+    }
+    if ((pedido.comprobanteChunks || 0) > 0 || pedido.comprobanteSize > 0) {
+        return `<button type="button" class="btn-ver-detalle" onclick="window.descargarComprobantePedido('${pedido.id}', '${pedido.comprobanteNombre || 'comprobante'}')" style="margin-top:0.5rem;">📄 Descargar comprobante</button>`;
+    }
+    return '';
+}
+
+async function descargarComprobantePedido(pedidoId, nombre = 'comprobante') {
+    try {
+        const { collection, getDocs, query, orderBy } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+        const q = query(collection(db, 'pedidos', pedidoId, 'comprobanteParts'), orderBy('index', 'asc'));
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            alert('❌ No se encontró el comprobante para este pedido');
+            return;
+        }
+
+        const chunks = snapshot.docs.map(doc => doc.data().chunk || '').join('');
+        const tipo = snapshot.docs[0]?.data()?.mime || 'application/octet-stream';
+        const blob = await (await fetch(`data:${tipo};base64,${chunks}`)).blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = nombre;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+        console.error('Error descargando comprobante:', error);
+        alert('❌ No se pudo descargar el comprobante');
+    }
 }
 
 function prepareAssetForFirestore(base64Value, field) {
@@ -564,6 +597,8 @@ function mostrarMenus(menus) {
 }
 
 // Función para abrir modal con menú completo
+window.descargarComprobantePedido = descargarComprobantePedido;
+
 window.abrirMenuModal = function(menuId) {
     const menu = menus.find(m => m.id === menuId);
     const imagenMenu = getStoredAsset(menu, 'imagen');
@@ -809,16 +844,20 @@ async function realizarPedido(e) {
         };
         console.log('✅ Guardando ubicación del cliente:', ubicacionFirestore);
         
+        const comprobanteAsset = metodoPago === 'transferencia' && comprobanteMeta
+            ? { comprobante: null, comprobanteChunks: comprobanteMeta.comprobanteChunks, comprobanteTipo: comprobanteMeta.comprobanteTipo, comprobanteNombre: comprobanteMeta.comprobanteNombre, comprobanteSize: comprobanteMeta.comprobanteSize }
+            : { comprobante: null, comprobanteChunks: [], comprobanteTipo: null, comprobanteNombre: null, comprobanteSize: 0 };
+
         const pedidoDoc = await addDoc(collection(db, 'pedidos'), {
             nombre: nombre,
             telefono: telefono,
             direccion: direccion,
             metodoPago: metodoPago,
-            comprobante: comprobante,
-            comprobanteChunks: metodoPago === 'transferencia' ? (comprobanteMeta?.comprobanteChunks || []) : [],
-            comprobanteTipo: metodoPago === 'transferencia' ? (comprobanteMeta?.comprobanteTipo || 'application/octet-stream') : null,
-            comprobanteNombre: metodoPago === 'transferencia' ? (comprobanteMeta?.comprobanteNombre || 'comprobante') : null,
-            comprobanteSize: metodoPago === 'transferencia' ? (comprobanteMeta?.comprobanteSize || 0) : 0,
+            comprobante: null,
+            comprobanteChunks: comprobanteAsset.comprobanteChunks.length,
+            comprobanteTipo: comprobanteAsset.comprobanteTipo,
+            comprobanteNombre: comprobanteAsset.comprobanteNombre,
+            comprobanteSize: comprobanteAsset.comprobanteSize,
             items: carrito,
             total: total,
             estado: 'pendiente',
@@ -830,6 +869,18 @@ async function realizarPedido(e) {
             repartidorNombre: null
         });
         console.log('✅ Pedido creado en Firestore:', pedidoDoc.id);
+
+        if (metodoPago === 'transferencia' && comprobanteAsset.comprobanteChunks.length > 0) {
+            const parts = comprobanteAsset.comprobanteChunks;
+            for (let index = 0; index < parts.length; index++) {
+                await addDoc(collection(db, 'pedidos', pedidoDoc.id, 'comprobanteParts'), {
+                    index,
+                    chunk: parts[index],
+                    mime: comprobanteAsset.comprobanteTipo || 'application/octet-stream',
+                    nombre: comprobanteAsset.comprobanteNombre || 'comprobante'
+                });
+            }
+        }
 
         // Guardar en localStorage ANTES de limpiar el carrito
         let misPedidos = JSON.parse(localStorage.getItem('misPedidos')) || [];
@@ -845,8 +896,8 @@ async function realizarPedido(e) {
             estado: 'pendiente',
             fecha: fechaActual.toISOString(),
             fechaFormato: fechaActual.toLocaleString('es-MX'),
-            comprobante: comprobante,
-            comprobanteChunks: comprobanteMeta?.comprobanteChunks || [],
+            comprobante: null,
+            comprobanteChunks: comprobanteAsset.comprobanteChunks.length || 0,
             comprobanteTipo: comprobanteMeta?.comprobanteTipo || null,
             comprobanteNombre: comprobanteMeta?.comprobanteNombre || null,
             comprobanteSize: comprobanteMeta?.comprobanteSize || 0,

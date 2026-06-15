@@ -637,7 +637,9 @@ async function mostrarPedidos() {
         const comprobanteValue = getStoredAsset(pedido, 'comprobante');
         const comprobanteHTML = comprobanteValue
             ? `<div class="pedido-comprobante"><p><strong>Comprobante:</strong> <a href="${comprobanteValue}" target="_blank" download="${pedido.comprobanteNombre || 'comprobante'}">Descargar</a></p></div>`
-            : '';
+            : ((pedido.comprobanteChunks || 0) > 0 || pedido.comprobanteSize > 0
+                ? `<div class="pedido-comprobante"><p><strong>Comprobante:</strong> <button class="btn-secondary" onclick="descargarComprobanteAdmin('${pedido.id}', '${pedido.comprobanteNombre || 'comprobante'}')">Descargar</button></p></div>`
+                : '');
         const itemsHTML = pedido.items.map(item =>
             `<div class="pedido-item">
                 <span class="pedido-item-nombre">${item.nombre}</span>
@@ -701,6 +703,34 @@ async function mostrarPedidos() {
         `;
         container.appendChild(card);
     });
+}
+
+async function descargarComprobanteAdmin(pedidoId, nombre = 'comprobante') {
+    try {
+        const { collection, getDocs, query, orderBy } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+        const q = query(collection(db, 'pedidos', pedidoId, 'comprobanteParts'), orderBy('index', 'asc'));
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            alert('❌ No se encontró comprobante para descargar');
+            return;
+        }
+
+        const chunks = snapshot.docs.map(doc => doc.data().chunk || '').join('');
+        const mime = snapshot.docs[0]?.data()?.mime || 'application/octet-stream';
+        const blob = await (await fetch(`data:${mime};base64,${chunks}`)).blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = nombre;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+        console.error('Error descargando comprobante del admin:', error);
+        alert('❌ No se pudo descargar el comprobante');
+    }
 }
 
 async function cambiarEstadoPedido(pedidoId, nuevoEstado) {
@@ -1441,6 +1471,7 @@ window.editarProducto = editarProducto;
 window.eliminarProducto = eliminarProducto;
 window.cambiarEstadoPedido = cambiarEstadoPedido;
 window.eliminarPedido = eliminarPedido;
+window.descargarComprobanteAdmin = descargarComprobanteAdmin;
 window.mostrarMapaAdmin = mostrarMapaAdmin;
 window.cerrarMapaAdmin = cerrarMapaAdmin;
 window.detenerCompartirUbicacion = detenerCompartirUbicacion;
