@@ -716,17 +716,18 @@ async function descargarComprobanteAdmin(pedidoId, nombre = 'comprobante') {
             return;
         }
 
-        const chunks = snapshot.docs.map(doc => doc.data().chunk || '').join('');
-        const mime = snapshot.docs[0]?.data()?.mime || 'application/octet-stream';
-        const blob = await (await fetch(`data:${mime};base64,${chunks}`)).blob();
-        const url = URL.createObjectURL(blob);
+        const dataUrl = snapshot.docs.map(doc => doc.data().chunk || '').join('');
+        if (!dataUrl) {
+            alert('❌ El comprobante está vacío');
+            return;
+        }
+
         const link = document.createElement('a');
-        link.href = url;
+        link.href = dataUrl;
         link.download = nombre;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
         console.error('Error descargando comprobante del admin:', error);
         alert('❌ No se pudo descargar el comprobante');
