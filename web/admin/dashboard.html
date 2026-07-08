@@ -37,6 +37,7 @@
             <ul class="admin-menu">
                 <li><a href="#" class="menu-item active" data-section="dashboard"><i class="fas fa-chart-line"></i> Dashboard</a></li>
                 <li><a href="#" class="menu-item" data-section="productos"><i class="fas fa-utensils"></i> Productos</a></li>
+                <li><a href="#" class="menu-item" data-section="ordenes_tienda"><i class="fas fa-store"></i> Órdenes en tienda</a></li>
                 <li><a href="#" class="menu-item" data-section="pedidos"><i class="fas fa-box"></i> Pedidos</a></li>
                 <li><a href="#" class="menu-item" data-section="menus"><i class="fas fa-file"></i> Menús</a></li>
                 <li><a href="#" class="menu-item" data-section="galeria"><i class="fas fa-images"></i> Galería</a></li>
@@ -104,6 +105,53 @@
                 </div>
 
                 <div id="listaProductos" class="productos-admin-list"></div>
+            </section>
+
+            <!-- ============================================ -->
+            <!-- ÓRDENES EN TIENDA (NUEVO)                    -->
+            <!-- ============================================ -->
+            <section id="ordenes_tienda" class="admin-section">
+                <div class="admin-header">
+                    <h2>Órdenes en tienda</h2>
+                    <button class="btn-primary" id="btnNuevaOrdenTienda" type="button">+ Nueva orden</button>
+                </div>
+                <p style="margin-bottom: 1rem; color: #5f6368;">Selecciona los productos, registra al cliente y la mesa, y genera el ticket térmico al finalizar.</p>
+
+                <div class="card" style="padding: 1rem; margin-bottom: 1rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08);">
+                    <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: end;">
+                        <div class="form-group">
+                            <label>Nombre del cliente</label>
+                            <input type="text" id="nombreOrdenTienda" placeholder="Ej. Juan Pérez" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Número de mesa</label>
+                            <input type="text" id="mesaOrdenTienda" placeholder="Ej. Mesa 5" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Observaciones</label>
+                            <input type="text" id="observacionesOrdenTienda" placeholder="Opcional">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; gap: 1rem; grid-template-columns: 1.2fr 0.8fr; align-items: start;">
+                    <div class="card" style="padding: 1rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08);">
+                        <h3 style="margin-bottom: 0.75rem;">Productos disponibles</h3>
+                        <div id="listaProductosTienda" class="productos-admin-list"></div>
+                    </div>
+
+                    <div class="card" style="padding: 1rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); position: sticky; top: 1rem;">
+                        <h3 style="margin-bottom: 0.75rem;">Resumen de la orden</h3>
+                        <div id="resumenOrdenTienda" style="display: grid; gap: 0.75rem;"></div>
+                        <div style="border-top: 1px solid #eee; padding-top: 0.75rem; margin-top: 0.75rem; font-weight: 700; font-size: 1.05rem;">Total: $<span id="totalOrdenTienda">0.00</span></div>
+                        <button class="btn-primary" id="btnGuardarOrdenTienda" type="button" style="width: 100%; margin-top: 1rem;">Guardar orden y generar ticket</button>
+                    </div>
+                </div>
+
+                <div class="card" style="padding: 1rem; margin-top: 1rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08);">
+                    <h3 style="margin-bottom: 0.75rem;">Órdenes recientes en tienda</h3>
+                    <div id="listaOrdenesTienda" class="pedidos-list"></div>
+                </div>
             </section>
 
             <!-- Pedidos Section -->

@@ -7,6 +7,8 @@ let pedidos = [];
 let comentarios = [];
 let menus = [];
 let galeria = [];
+let ordenesTienda = [];
+let ordenTiendaActual = [];
 let productoEditando = null;
 let db = null;
 let auth = null;
@@ -71,14 +73,10 @@ async function pdfToImage(file) {
         const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
         const totalPages = pdf.numPages;
         
-        // Configurar escala
-        const scale = 2; // 2x para mejor calidad
-        
-        // Obtener dimensiones de la primera página para conocer el ancho
+        const scale = 2;
         const firstPage = await pdf.getPage(1);
         const viewport = firstPage.getViewport({ scale });
         
-        // Crear canvas grande que contendrá todas las páginas apiladas
         const totalCanvas = document.createElement('canvas');
         totalCanvas.width = viewport.width;
         totalCanvas.height = viewport.height * totalPages;
@@ -87,30 +85,21 @@ async function pdfToImage(file) {
         totalContext.fillStyle = 'white';
         totalContext.fillRect(0, 0, totalCanvas.width, totalCanvas.height);
         
-        // Renderizar cada página
         for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
             const page = await pdf.getPage(pageNum);
             const pageViewport = page.getViewport({ scale });
-            
-            // Crear canvas para la página individual
             const pageCanvas = document.createElement('canvas');
             pageCanvas.width = pageViewport.width;
             pageCanvas.height = pageViewport.height;
-            
             const pageContext = pageCanvas.getContext('2d');
-            
-            // Renderizar la página
             await page.render({
                 canvasContext: pageContext,
                 viewport: pageViewport
             }).promise;
-            
-            // Dibujar en el canvas total
             const yOffset = (pageNum - 1) * pageViewport.height;
             totalContext.drawImage(pageCanvas, 0, yOffset);
         }
         
-        // Convertir a Base64
         return totalCanvas.toDataURL('image/jpeg', 0.85);
     } catch (error) {
         console.error('Error al convertir PDF a imagen:', error);
@@ -119,15 +108,16 @@ async function pdfToImage(file) {
 }
 
 // ============================================
+// INICIALIZAR FIREBASE
+// ============================================
+
 async function inicializarFirebase() {
     try {
-        // Importar módulos dinámicamente
         const firebaseModule = await import('../../js/firebase-config.js');
         db = firebaseModule.db;
         auth = firebaseModule.auth;
         storage = firebaseModule.storage;
 
-        // Verificar autenticación
         const { onAuthStateChanged, signOut } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-auth.js');
         
         onAuthStateChanged(auth, (user) => {
@@ -136,12 +126,10 @@ async function inicializarFirebase() {
                 document.getElementById('adminUserEmail').textContent = user.email;
                 cargarDatos();
             } else {
-                // Redirigir a login
                 window.location.href = 'login.html';
             }
         });
 
-        // Botón logout
         document.getElementById('logoutBtn').addEventListener('click', () => {
             signOut(auth).then(() => {
                 localStorage.removeItem('adminUser');
@@ -155,7 +143,6 @@ async function inicializarFirebase() {
     }
 }
 
-// Iniciar cuando DOM está listo
 document.addEventListener('DOMContentLoaded', () => {
     setupMenuItems();
     setupFormularios();
@@ -190,6 +177,9 @@ function cambiarSeccion(seccion) {
         actualizarDashboard();
     } else if (seccion === 'productos') {
         mostrarProductos();
+    } else if (seccion === 'ordenes_tienda') {
+        mostrarProductosOrdenTienda();
+        mostrarOrdenesTienda();
     } else if (seccion === 'pedidos') {
         mostrarPedidos();
     } else if (seccion === 'menus') {
@@ -211,62 +201,54 @@ async function cargarDatos() {
     try {
         const { collection, getDocs, query, orderBy } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
         
-        // Cargar productos
+        // Productos
         const productosSnap = await getDocs(collection(db, 'productos'));
         productos = [];
         productosSnap.forEach(doc => {
-            productos.push({
-                id: doc.id,
-                ...doc.data()
-            });
+            productos.push({ id: doc.id, ...doc.data() });
         });
 
-        // Cargar pedidos
+        // Pedidos
         const pedidosSnap = await getDocs(query(collection(db, 'pedidos'), orderBy('fecha', 'desc')));
         pedidos = [];
         pedidosSnap.forEach(doc => {
-            pedidos.push({
-                id: doc.id,
-                ...doc.data()
-            });
+            pedidos.push({ id: doc.id, ...doc.data() });
         });
 
-        // Cargar comentarios
+        // Órdenes en tienda
+        const ordenesTiendaSnap = await getDocs(query(collection(db, 'pedidos_tienda'), orderBy('fecha', 'desc')));
+        ordenesTienda = [];
+        ordenesTiendaSnap.forEach(doc => {
+            ordenesTienda.push({ id: doc.id, ...doc.data() });
+        });
+
+        // Comentarios
         const comentariosSnap = await getDocs(collection(db, 'comentarios'));
         comentarios = [];
         comentariosSnap.forEach(doc => {
-            comentarios.push({
-                id: doc.id,
-                ...doc.data()
-            });
+            comentarios.push({ id: doc.id, ...doc.data() });
         });
 
-        // Cargar menús
+        // Menús
         const menusSnap = await getDocs(collection(db, 'menus'));
         menus = [];
         menusSnap.forEach(doc => {
-            menus.push({
-                id: doc.id,
-                ...doc.data()
-            });
+            menus.push({ id: doc.id, ...doc.data() });
         });
 
-        // Cargar galería
+        // Galería
         const galeriaSnap = await getDocs(collection(db, 'galeria'));
         galeria = [];
         galeriaSnap.forEach(doc => {
-            galeria.push({
-                id: doc.id,
-                ...doc.data()
-            });
+            galeria.push({ id: doc.id, ...doc.data() });
         });
 
         document.getElementById('loadingMessage').style.display = 'none';
         actualizarDashboard();
         console.log('Datos cargados correctamente');
         
-        // Iniciar listener en tiempo real para pedidos
         iniciarListenerPedidosAdmin();
+        iniciarListenerOrdenesTiendaAdmin();
     } catch (error) {
         console.error('Error al cargar datos:', error);
         mostrarError('Error al cargar datos: ' + error.message);
@@ -274,37 +256,29 @@ async function cargarDatos() {
 }
 
 // ============================================
-// LISTENER EN TIEMPO REAL - ADMIN PANEL
+// LISTENERS EN TIEMPO REAL
 // ============================================
 
 let unsubscribePedidosAdmin = null;
+let unsubscribeOrdenesTiendaAdmin = null;
 
 async function iniciarListenerPedidosAdmin() {
     try {
         console.log('🔄 Iniciando listener de pedidos en tiempo real (ADMIN)...');
-        
         const { collection, query, orderBy, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
         
-        // Cancelar listeners anteriores si existen
         if (unsubscribePedidosAdmin) {
             console.log('🛑 Deteniendo listener anterior');
             unsubscribePedidosAdmin();
         }
         
-        // Crear consulta que escucha en tiempo real
         const q = query(collection(db, 'pedidos'), orderBy('fecha', 'desc'));
-        
         unsubscribePedidosAdmin = onSnapshot(q, (snapshot) => {
             console.log('🔔 Cambios detectados en pedidos (ADMIN). Actualizando...');
-            
             pedidos = [];
             snapshot.forEach(doc => {
-                pedidos.push({
-                    id: doc.id,
-                    ...doc.data()
-                });
+                pedidos.push({ id: doc.id, ...doc.data() });
             });
-            
             console.log('✅ Actualizando panel de pedidos. Total:', pedidos.length);
             mostrarPedidos();
         }, (error) => {
@@ -312,6 +286,33 @@ async function iniciarListenerPedidosAdmin() {
         });
     } catch (error) {
         console.error('Error iniciando listener:', error);
+    }
+}
+
+async function iniciarListenerOrdenesTiendaAdmin() {
+    try {
+        console.log('🔄 Iniciando listener de órdenes en tienda (ADMIN)...');
+        const { collection, query, orderBy, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+        
+        if (unsubscribeOrdenesTiendaAdmin) {
+            console.log('🛑 Deteniendo listener anterior de órdenes tienda');
+            unsubscribeOrdenesTiendaAdmin();
+        }
+        
+        const q = query(collection(db, 'pedidos_tienda'), orderBy('fecha', 'desc'));
+        unsubscribeOrdenesTiendaAdmin = onSnapshot(q, (snapshot) => {
+            console.log('🔔 Cambios detectados en órdenes tienda. Actualizando...');
+            ordenesTienda = [];
+            snapshot.forEach(doc => {
+                ordenesTienda.push({ id: doc.id, ...doc.data() });
+            });
+            console.log('✅ Actualizando lista de órdenes tienda. Total:', ordenesTienda.length);
+            mostrarOrdenesTienda();
+        }, (error) => {
+            console.error('❌ Error en listener de órdenes tienda:', error);
+        });
+    } catch (error) {
+        console.error('Error iniciando listener de órdenes tienda:', error);
     }
 }
 
@@ -431,13 +432,11 @@ function setupFormularios() {
         document.getElementById('enlaceMenuGroup').style.display = e.target.value === 'pdf' ? 'block' : 'none';
     });
 
-    // Validador de tamaño para PDF de menú
     document.getElementById('archivoMenuPdf').addEventListener('change', (e) => {
         const archivo = e.target.files[0];
         if (archivo) {
             const maxSizeMB = 20;
             const fileSizeMB = archivo.size / (1024 * 1024);
-            
             if (fileSizeMB > maxSizeMB) {
                 alert(`❌ El archivo es demasiado grande (${fileSizeMB.toFixed(2)} MB). Máximo permitido: ${maxSizeMB} MB`);
                 e.target.value = '';
@@ -467,12 +466,22 @@ function setupFormularios() {
     document.getElementById('btnGuardarImagenPrincipal').addEventListener('click', guardarImagenPrincipal);
     document.getElementById('btnEliminarImagenPrincipal').addEventListener('click', eliminarImagenPrincipal);
 
-    // Cargar previsualizaciones
     cargarPreviewsConfiguracion();
 
     // Filtros de pedidos
     document.getElementById('buscarPedido').addEventListener('input', mostrarPedidos);
     document.getElementById('filtroEstado').addEventListener('change', mostrarPedidos);
+
+    // ========== ÓRDENES EN TIENDA ==========
+    document.getElementById('btnNuevaOrdenTienda').addEventListener('click', () => {
+        ordenTiendaActual = [];
+        document.getElementById('nombreOrdenTienda').value = '';
+        document.getElementById('mesaOrdenTienda').value = '';
+        document.getElementById('observacionesOrdenTienda').value = '';
+        actualizarResumenOrdenTienda();
+    });
+
+    document.getElementById('btnGuardarOrdenTienda').addEventListener('click', guardarOrdenTienda);
 }
 
 async function guardarProducto(e) {
@@ -601,6 +610,277 @@ async function eliminarProducto(productoId) {
     } catch (error) {
         alert('❌ Error: ' + error.message);
     }
+}
+
+// ============================================
+// ÓRDENES EN TIENDA
+// ============================================
+
+function mostrarProductosOrdenTienda() {
+    const container = document.getElementById('listaProductosTienda');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (!productos.length) {
+        container.innerHTML = '<p style="text-align: center; color: #798839;">No hay productos disponibles.</p>';
+        return;
+    }
+
+    productos.forEach(producto => {
+        const card = document.createElement('div');
+        card.className = 'producto-admin-card';
+        const imagenProducto = getStoredAsset(producto, 'imagen');
+
+        card.innerHTML = `
+            <div class="producto-admin-img">${imagenProducto ? `<img src="${imagenProducto}" alt="${producto.nombre}" style="width:100%;height:100%;object-fit:cover;">` : '🍕'}</div>
+            <div class="producto-admin-info">
+                <div class="producto-admin-nombre">${producto.nombre}</div>
+                <div class="producto-admin-precio">$${Number(producto.precio || 0).toFixed(2)}</div>
+                <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem;">
+                    <input type="number" min="1" value="1" id="cantidad-${producto.id}" style="width: 60px; padding: 0.45rem; border: 1px solid #ddd; border-radius: 8px;">
+                    <button type="button" class="btn-primary" onclick="agregarProductoOrdenTienda('${producto.id}')">Agregar</button>
+                </div>
+            </div>`;
+        container.appendChild(card);
+    });
+}
+
+function agregarProductoOrdenTienda(productoId) {
+    const producto = productos.find(item => item.id === productoId);
+    if (!producto) return;
+
+    const cantidadInput = document.getElementById(`cantidad-${productoId}`);
+    const cantidad = Math.max(1, parseInt(cantidadInput?.value || '1', 10) || 1);
+
+    const itemExistente = ordenTiendaActual.find(item => item.id === productoId);
+    if (itemExistente) {
+        itemExistente.cantidad += cantidad;
+    } else {
+        ordenTiendaActual.push({
+            id: producto.id,
+            nombre: producto.nombre,
+            precio: Number(producto.precio || 0),
+            cantidad
+        });
+    }
+
+    actualizarResumenOrdenTienda();
+}
+
+function quitarProductoOrdenTienda(productoId) {
+    ordenTiendaActual = ordenTiendaActual.filter(item => item.id !== productoId);
+    actualizarResumenOrdenTienda();
+}
+
+function actualizarResumenOrdenTienda() {
+    const resumen = document.getElementById('resumenOrdenTienda');
+    const total = document.getElementById('totalOrdenTienda');
+    if (!resumen || !total) return;
+
+    if (!ordenTiendaActual.length) {
+        resumen.innerHTML = '<p style="color:#5f6368;">Aún no hay productos seleccionados.</p>';
+        total.textContent = '0.00';
+        return;
+    }
+
+    const subtotal = ordenTiendaActual.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
+    total.textContent = subtotal.toFixed(2);
+
+    resumen.innerHTML = ordenTiendaActual.map(item => `
+        <div style="display:flex; justify-content:space-between; gap:0.75rem; padding:0.45rem 0; border-bottom:1px solid #f0f0f0;">
+            <div>
+                <strong>${item.nombre}</strong><br>
+                <small style="color:#5f6368;">x${item.cantidad} · $${item.precio.toFixed(2)} c/u</small>
+            </div>
+            <button type="button" class="btn-danger" onclick="quitarProductoOrdenTienda('${item.id}')" style="padding:0.35rem 0.5rem; font-size:0.9rem;">Quitar</button>
+        </div>
+    `).join('');
+}
+
+async function guardarOrdenTienda() {
+    if (!ordenTiendaActual.length) {
+        alert('Selecciona al menos un producto para la orden.');
+        return;
+    }
+
+    const nombreCliente = document.getElementById('nombreOrdenTienda')?.value.trim();
+    const mesa = document.getElementById('mesaOrdenTienda')?.value.trim();
+    const observaciones = document.getElementById('observacionesOrdenTienda')?.value.trim();
+
+    if (!nombreCliente || !mesa) {
+        alert('Escribe el nombre del cliente y el número de mesa para continuar.');
+        return;
+    }
+
+    try {
+        const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+        const total = ordenTiendaActual.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
+
+        const orden = {
+            nombre: nombreCliente,
+            mesa,
+            observaciones: observaciones || '',
+            items: ordenTiendaActual,
+            total,
+            estado: 'pendiente',
+            metodoPago: 'en_tienda',
+            fecha: new Date(),
+            tipo: 'tienda'
+        };
+
+        const docRef = await addDoc(collection(db, 'pedidos_tienda'), orden);
+        const ordenGuardada = {
+            ...orden,
+            id: docRef.id,
+            fecha: new Date()
+        };
+
+        const printWindow = window.open('', '_blank', 'width=340,height=720');
+        if (!printWindow) {
+            alert('Permite ventanas emergentes para imprimir el ticket.');
+            return;
+        }
+
+        setTimeout(() => {
+            generarTicketTienda(ordenGuardada, printWindow);
+            printWindow.focus();
+        }, 150);
+
+        ordenTiendaActual = [];
+        document.getElementById('nombreOrdenTienda').value = '';
+        document.getElementById('mesaOrdenTienda').value = '';
+        document.getElementById('observacionesOrdenTienda').value = '';
+        actualizarResumenOrdenTienda();
+        await cargarDatos();
+        mostrarOrdenesTienda();
+        alert('✅ Orden registrada correctamente.');
+    } catch (error) {
+        console.error('Error guardando orden en tienda:', error);
+        alert('❌ No se pudo guardar la orden: ' + error.message);
+    }
+}
+
+function generarTicketTienda(orden, printWindow = null) {
+    const fecha = new Date(orden.fecha?.toDate?.() || orden.fecha);
+    const fechaTexto = isNaN(fecha.getTime()) ? 'Fecha no disponible' : fecha.toLocaleString('es-MX');
+    const items = orden.items
+        .map(item => `${item.cantidad}x ${item.nombre}   $${(item.precio * item.cantidad).toFixed(2)}`)
+        .join('\n');
+
+    const html = `
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+          <meta charset="UTF-8" />
+          <title>Ticket - ${orden.nombre}</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+            html, body { margin: 0; padding: 0; background: #fff; }
+            body { width: 80mm; font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #000; }
+            .ticket { padding: 10px; box-sizing: border-box; }
+            .center { text-align: center; }
+            .bold { font-weight: 700; }
+            hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
+            .row { display: flex; justify-content: space-between; gap: 8px; }
+            .small { font-size: 11px; }
+            pre { margin: 0; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="ticket">
+            <div class="center bold">CAROLAS GREEN</div>
+            <div class="center small">Orden en tienda</div>
+            <hr>
+            <div class="small">Cliente: ${orden.nombre}</div>
+            <div class="small">Mesa: ${orden.mesa}</div>
+            <div class="small">Fecha: ${fechaTexto}</div>
+            ${orden.observaciones ? `<div class="small">Obs: ${orden.observaciones}</div>` : ''}
+            <hr>
+            <pre>${items}</pre>
+            <hr>
+            <div class="row bold"><span>Total</span><span>$${Number(orden.total || 0).toFixed(2)}</span></div>
+            <hr>
+            <div class="center small">¡Gracias por su visita!</div>
+            <div class="center" style="margin-top: 8px;">
+              <button type="button" onclick="window.print();" style="padding: 6px 10px; font-family: 'Courier New', Courier, monospace; font-size: 11px;">Imprimir ticket</button>
+            </div>
+          </div>
+        </body>
+        </html>`;
+
+    const targetWindow = printWindow || window.open('', '_blank', 'width=340,height=720');
+    if (!targetWindow) {
+        alert('Permite ventanas emergentes para imprimir el ticket.');
+        return;
+    }
+
+    targetWindow.document.open();
+    targetWindow.document.write(html);
+    targetWindow.document.close();
+    targetWindow.focus();
+}
+
+function mostrarOrdenesTienda() {
+    const container = document.getElementById('listaOrdenesTienda');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (!ordenesTienda.length) {
+        container.innerHTML = '<p style="text-align: center; color: #798839;">No hay órdenes en tienda aún.</p>';
+        return;
+    }
+
+    ordenesTienda.forEach(orden => {
+        const fechaTicket = new Date(orden.fecha?.toDate?.() || orden.fecha);
+        const fechaTexto = isNaN(fechaTicket.getTime()) ? 'Fecha no disponible' : fechaTicket.toLocaleString('es-MX');
+        const itemsHtml = orden.items.map(item => `<div class="pedido-item"><span class="pedido-item-nombre">${item.nombre}</span><span class="pedido-item-cantidad">x${item.cantidad}</span><span class="pedido-item-precio">$${(item.precio * item.cantidad).toFixed(2)}</span></div>`).join('');
+
+        const card = document.createElement('div');
+        card.className = 'pedido-card pendiente';
+        card.innerHTML = `
+            <div class="pedido-header">
+                <div class="pedido-id">${orden.nombre} · Mesa ${orden.mesa}</div>
+                <span class="pedido-estado pendiente">${orden.estado}</span>
+            </div>
+            <div class="pedido-info">
+                <div class="pedido-detail"><label>Fecha</label><p>${fechaTexto}</p></div>
+                <div class="pedido-detail"><label>Total</label><p style="color:#dbb42a;font-weight:bold;">$${Number(orden.total || 0).toFixed(2)}</p></div>
+                ${orden.observaciones ? `<div class="pedido-detail"><label>Observaciones</label><p>${orden.observaciones}</p></div>` : ''}
+            </div>
+            <div class="pedido-items"><h4>Artículos:</h4>${itemsHtml}<div class="pedido-total">Total: $${Number(orden.total || 0).toFixed(2)}</div></div>
+            <div class="pedido-actions"><button class="btn-primary" type="button" onclick="imprimirTicketTienda('${orden.id}')">Imprimir ticket</button></div>`;
+        container.appendChild(card);
+    });
+}
+
+function imprimirTicketTienda(ordenId) {
+    // Buscar la orden en el arreglo global
+    const orden = ordenesTienda.find(o => o.id === ordenId);
+    if (!orden) {
+        alert('Orden no encontrada');
+        return;
+    }
+
+    // Normalizar fecha (por si viene como Timestamp o string)
+    const fecha = new Date(orden.fecha?.toDate?.() || orden.fecha);
+    const ordenNormalizada = {
+        ...orden,
+        fecha: fecha && !isNaN(fecha.getTime()) ? fecha : new Date(),
+        total: Number(orden.total || 0)
+    };
+
+    const printWindow = window.open('', '_blank', 'width=340,height=720');
+    if (!printWindow) {
+        alert('Permite ventanas emergentes para imprimir el ticket.');
+        return;
+    }
+
+    setTimeout(() => {
+        generarTicketTienda(ordenNormalizada, printWindow);
+        printWindow.focus();
+    }, 150);
 }
 
 // ============================================
@@ -746,7 +1026,6 @@ async function cambiarEstadoPedido(pedidoId, nuevoEstado) {
         mostrarPedidos();
         alert('✅ Estado actualizado');
         
-        // Si cambió a "en camino", ofrecer compartir ubicación
         if (nuevoEstado === 'camino') {
             setTimeout(() => {
                 const compartir = confirm('✅ Pedido en camino!\n\n¿Quieres compartir tu ubicación en tiempo real con el cliente?');
@@ -792,10 +1071,8 @@ async function iniciarCompartirUbicacionRepartidor(pedidoId) {
     console.log('🚗 Iniciando compartir ubicación para pedido:', pedidoId);
     alert('📍 Compartiendo tu ubicación en tiempo real...\n\nEl cliente verá tu posición actualizándose cada 5 segundos.\n\nHaz clic en "Detener compartición" para pausar.');
 
-    // Actualizar ubicación inmediatamente
     await actualizarUbicacionRepartidor(pedidoId);
 
-    // Luego cada 5 segundos
     if (intervaloUbicacionRepartidor) {
         clearInterval(intervaloUbicacionRepartidor);
     }
@@ -860,7 +1137,6 @@ function mostrarMapaAdmin(pedidoId, direccionCliente, nombreCliente, lat = null,
     const mapContainer = document.getElementById('mapAdminContainer');
     const mapaInfo = document.getElementById('mapaAdminInfo');
     
-    // Destruir mapa anterior si existe
     if (mapaInstanciaAdmin) {
         try {
             mapaInstanciaAdmin.off();
@@ -871,254 +1147,220 @@ function mostrarMapaAdmin(pedidoId, direccionCliente, nombreCliente, lat = null,
         }
     }
     
-    // Limpiar contenedor
     mapContainer.innerHTML = '';
-    
-    // Mostrar modal PRIMERO para que el contenedor tenga dimensiones
     modal.classList.add('show');
-    
     mapaInfo.innerHTML = `<p>📍 <strong>Cliente:</strong> ${nombreCliente}</p><p>📮 <strong>Dirección:</strong> ${direccionCliente}</p><p>⏳ Cargando ubicación...</p>`;
     
-    // Dar tiempo a que el modal aparezca y el contenedor tenga dimensiones
     setTimeout(() => {
         try {
-            // Crear mapa
             const mapa = L.map('mapAdminContainer', {
                 preferCanvas: true
             }).setView([18.4241, -69.9267], 13);
-            
             mapaInstanciaAdmin = mapa;
             
-            // Agregar tiles de OpenStreetMap
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '© OpenStreetMap contributors'
             }).addTo(mapa);
             
-            // Forzar que Leaflet recalcule el tamaño del mapa
             mapa.invalidateSize(false);
     
-    // Obtener ubicación del repartidor (admin) 
-    const pedidoData = pedidos.find(p => p.id === pedidoId);
-    const repartidorUbicacion = pedidoData?.repartidorUbicacion || null;
-    
-    // Si tenemos coordenadas directas, usarlas
-    if (lat !== null && lng !== null) {
-        console.log('?? Usando coordenadas directas:', lat, lng);
-        
-        // Grupo de capas para fitBounds
-        const group = new L.FeatureGroup();
-        
-        // Marcar ubicaci�n del cliente
-        const markerCliente = L.marker([lat, lng], {
-            icon: L.icon({
-                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34],
-                shadowSize: [41, 41]
-            })
-        }).bindPopup(`<strong>${nombreCliente}</strong><br>${direccionCliente}`);
-        
-        group.addLayer(markerCliente);
-        markerCliente.addTo(mapa);
-        
-        let infoText = `
-            <p>?? <strong>Cliente:</strong> ${nombreCliente}</p>
-            <p>?? <strong>Direcci�n:</strong> ${direccionCliente}</p>
-            <p>?? <strong>Coordenadas GPS:</strong> ${lat.toFixed(4)}, ${lng.toFixed(4)}</p>
-            <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">?? Ubicaci�n del cliente (en tiempo real)</p>
-        `;
-        
-        // Si el repartidor tiene ubicaci�n, mostrarla
-        if (repartidorUbicacion && repartidorUbicacion.lat && repartidorUbicacion.lng) {
-            console.log('?? Ubicaci�n del repartidor:', repartidorUbicacion);
+            const pedidoData = pedidos.find(p => p.id === pedidoId);
+            const repartidorUbicacion = pedidoData?.repartidorUbicacion || null;
             
-            const repLat = repartidorUbicacion.lat;
-            const repLng = repartidorUbicacion.lng;
-            
-            // Marcador verde del repartidor
-            const markerRepartidor = L.marker([repLat, repLng], {
-                icon: L.icon({
-                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41],
-                    popupAnchor: [1, -34],
-                    shadowSize: [41, 41]
-                })
-            }).bindPopup(`<strong>?? Repartidor</strong><br>En camino`);
-            
-            group.addLayer(markerRepartidor);
-            markerRepartidor.addTo(mapa);
-            
-            // Dibujar l�nea entre cliente y repartidor
-            const polyline = L.polyline([[lat, lng], [repLat, repLng]], {
-                color: '#0066ff',
-                weight: 3,
-                opacity: 0.7,
-                dashArray: '5, 5'
-            }).addTo(mapa);
-            
-            group.addLayer(polyline);
-            
-            // Calcular distancia usando f�rmula Haversine
-            const R = 6371; // Radio de la Tierra en km
-            const dLat = (repLat - lat) * Math.PI / 180;
-            const dLng = (repLng - lng) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat * Math.PI / 180) * Math.cos(repLat * Math.PI / 180) *
-                      Math.sin(dLng/2) * Math.sin(dLng/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            const distancia = (R * c).toFixed(2);
-            
-            // Timestamp del repartidor
-            const timestamp = repartidorUbicacion.timestamp ? 
-                new Date(repartidorUbicacion.timestamp).toLocaleString() : 'Sin actualizar';
-            
-            infoText += `
-                <hr style="margin: 0.5rem 0;">
-                <p>?? <strong>Repartidor:</strong> En camino</p>
-                <p>?? <strong>Coordenadas:</strong> ${repLat.toFixed(4)}, ${repLng.toFixed(4)}</p>
-                <p>?? <strong>Distancia:</strong> ${distancia} km</p>
-                <p style="font-size: 0.85rem; color: #666;">? Actualizado: ${timestamp}</p>
-                <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">?? Ubicaci�n del repartidor (en tiempo real)</p>
-            `;
-            
-            // Ajustar vista para mostrar ambos puntos
-            try {
-                mapa.fitBounds(group.getBounds().pad(0.15), {maxZoom: 15, animate: true});
-            } catch (e) {
-                console.warn('Error en fitBounds:', e);
-                mapa.setView([lat, lng], 13);
-            }
-        } else {
-            // Solo mostrar ubicaci�n del cliente
-            mapa.setView([lat, lng], 15);
-        }
-        
-        mapaInfo.innerHTML = infoText;
-    } else {
-        // Si no tenemos coordenadas GPS, mostrar ubicación por defecto (tienda)
-        console.log('⚠️ Sin coordenadas GPS - mostrando ubicación por defecto');
-        
-        const destLat = 18.4241;  // Ubicación por defecto
-        const destLng = -69.9267;
-        const data = [{lat: destLat, lon: destLng}];
-        
-        // Simular estructura fetch para mantener consistencia
-        Promise.resolve(data)
-            .then(data => {
-                if (data.length > 0) {
-                    const destLatResult = parseFloat(data[0].lat);
-                    const destLngResult = parseFloat(data[0].lon);
+            if (lat !== null && lng !== null) {
+                console.log('Usando coordenadas directas:', lat, lng);
+                
+                const group = new L.FeatureGroup();
+                
+                const markerCliente = L.marker([lat, lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).bindPopup(`<strong>${nombreCliente}</strong><br>${direccionCliente}`);
+                
+                group.addLayer(markerCliente);
+                markerCliente.addTo(mapa);
+                
+                let infoText = `
+                    <p>📍 <strong>Cliente:</strong> ${nombreCliente}</p>
+                    <p>📮 <strong>Dirección:</strong> ${direccionCliente}</p>
+                    <p>📍 <strong>Coordenadas GPS:</strong> ${lat.toFixed(4)}, ${lng.toFixed(4)}</p>
+                    <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">📍 Ubicación del cliente (en tiempo real)</p>
+                `;
+                
+                if (repartidorUbicacion && repartidorUbicacion.lat && repartidorUbicacion.lng) {
+                    console.log('Ubicación del repartidor:', repartidorUbicacion);
+                    const repLat = repartidorUbicacion.lat;
+                    const repLng = repartidorUbicacion.lng;
                     
-                    // Grupo de capas para fitBounds
-                    const group = new L.FeatureGroup();
-                    
-                    // Marcar ubicación del cliente
-                    const markerCliente = L.marker([destLatResult, destLngResult], {
+                    const markerRepartidor = L.marker([repLat, repLng], {
                         icon: L.icon({
-                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
                             shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
                             iconSize: [25, 41],
                             iconAnchor: [12, 41],
                             popupAnchor: [1, -34],
                             shadowSize: [41, 41]
                         })
-                    }).bindPopup(`<strong>${nombreCliente}</strong><br>${direccionCliente}`);
+                    }).bindPopup(`<strong>🚗 Repartidor</strong><br>En camino`);
                     
-                    group.addLayer(markerCliente);
-                    markerCliente.addTo(mapa);
+                    group.addLayer(markerRepartidor);
+                    markerRepartidor.addTo(mapa);
                     
-                    let infoText = `
-                        <p>📍 <strong>Cliente:</strong> ${nombreCliente}</p>
-                        <p>📮 <strong>Dirección registrada:</strong> ${direccionCliente}</p>
-                        <p>📌 <strong>Coordenadas:</strong> ${destLat.toFixed(4)}, ${destLng.toFixed(4)}</p>
-                        <p style="font-size: 0.9rem; color: #f39c12; margin-top: 0.5rem;">⚠️ Sin GPS del cliente - mostrando ubicación por defecto</p>
+                    const polyline = L.polyline([[lat, lng], [repLat, repLng]], {
+                        color: '#0066ff',
+                        weight: 3,
+                        opacity: 0.7,
+                        dashArray: '5, 5'
+                    }).addTo(mapa);
+                    
+                    group.addLayer(polyline);
+                    
+                    const R = 6371;
+                    const dLat = (repLat - lat) * Math.PI / 180;
+                    const dLng = (repLng - lng) * Math.PI / 180;
+                    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                              Math.cos(lat * Math.PI / 180) * Math.cos(repLat * Math.PI / 180) *
+                              Math.sin(dLng/2) * Math.sin(dLng/2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                    const distancia = (R * c).toFixed(2);
+                    
+                    const timestamp = repartidorUbicacion.timestamp ? 
+                        new Date(repartidorUbicacion.timestamp).toLocaleString() : 'Sin actualizar';
+                    
+                    infoText += `
+                        <hr style="margin: 0.5rem 0;">
+                        <p>🚗 <strong>Repartidor:</strong> En camino</p>
+                        <p>📍 <strong>Coordenadas:</strong> ${repLat.toFixed(4)}, ${repLng.toFixed(4)}</p>
+                        <p>📏 <strong>Distancia:</strong> ${distancia} km</p>
+                        <p style="font-size: 0.85rem; color: #666;">⏰ Actualizado: ${timestamp}</p>
+                        <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">🟢 Ubicación del repartidor (en tiempo real)</p>
                     `;
                     
-                    // Si el repartidor tiene ubicación, mostrarla
-                    if (repartidorUbicacion && repartidorUbicacion.lat && repartidorUbicacion.lng) {
-                        console.log('🚗 Ubicación del repartidor:', repartidorUbicacion);
-                        
-                        const repLat = repartidorUbicacion.lat;
-                        const repLng = repartidorUbicacion.lng;
-                        
-                        // Marcador verde del repartidor
-                        const markerRepartidor = L.marker([repLat, repLng], {
-                            icon: L.icon({
-                                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-                                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                                iconSize: [25, 41],
-                                iconAnchor: [12, 41],
-                                popupAnchor: [1, -34],
-                                shadowSize: [41, 41]
-                            })
-                        }).bindPopup(`<strong>🚗 Repartidor</strong><br>En camino`);
-                        
-                        group.addLayer(markerRepartidor);
-                        markerRepartidor.addTo(mapa);
-                        
-                        // Dibujar línea entre cliente y repartidor
-                        const polyline = L.polyline([[destLatResult, destLngResult], [repLat, repLng]], {
-                            color: '#0066ff',
-                            weight: 3,
-                            opacity: 0.7,
-                            dashArray: '5, 5'
-                        }).addTo(mapa);
-                        
-                        group.addLayer(polyline);
-                        
-                        // Calcular distancia usando fórmula Haversine
-                        const R = 6371; // Radio de la Tierra en km
-                        const dLat = (repLat - destLatResult) * Math.PI / 180;
-                        const dLng = (repLng - destLngResult) * Math.PI / 180;
-                        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                                  Math.cos(destLatResult * Math.PI / 180) * Math.cos(repLat * Math.PI / 180) *
-                                  Math.sin(dLng/2) * Math.sin(dLng/2);
-                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                        const distancia = (R * c).toFixed(2);
-                        
-                        // Timestamp del repartidor
-                        const timestamp = repartidorUbicacion.timestamp ? 
-                            new Date(repartidorUbicacion.timestamp).toLocaleString() : 'Sin actualizar';
-                        
-                        infoText += `
-                            <hr style="margin: 0.5rem 0;">
-                            <p>🚗 <strong>Repartidor:</strong> En camino</p>
-                            <p>📍 <strong>Coordenadas:</strong> ${repLat.toFixed(4)}, ${repLng.toFixed(4)}</p>
-                            <p>📏 <strong>Distancia:</strong> ${distancia} km</p>
-                            <p style="font-size: 0.85rem; color: #666;">⏰ Actualizado: ${timestamp}</p>
-                            <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">🟢 Ubicación del repartidor (en tiempo real)</p>
-                        `;
-                        
-                        // Ajustar vista para mostrar ambos puntos
-                        try {
-                            mapa.fitBounds(group.getBounds().pad(0.15), {maxZoom: 15, animate: true});
-                        } catch (e) {
-                            console.warn('Error en fitBounds:', e);
-                            mapa.setView([destLatResult, destLngResult], 13);
-                        }
-                    } else {
-                        // Solo mostrar ubicación del cliente
-                        mapa.setView([destLatResult, destLngResult], 15);
+                    try {
+                        mapa.fitBounds(group.getBounds().pad(0.15), {maxZoom: 15, animate: true});
+                    } catch (e) {
+                        console.warn('Error en fitBounds:', e);
+                        mapa.setView([lat, lng], 13);
                     }
-                    
-                    mapaInfo.innerHTML = infoText;
                 } else {
-                    mapaInfo.innerHTML = `
-                        <p>⚠️ No se encontró la dirección: ${direccionCliente}</p>
-                        <p>Por favor, verifica la dirección e intenta nuevamente.</p>
-                    `;
+                    mapa.setView([lat, lng], 15);
                 }
-            })
-            .catch(err => {
-                console.error('Error buscando dirección:', err);
-                mapaInfo.innerHTML = `<p>❌ Error al cargar el mapa. Intenta nuevamente.</p>`;
-            });
-    }
+                
+                mapaInfo.innerHTML = infoText;
+            } else {
+                console.log('⚠️ Sin coordenadas GPS - mostrando ubicación por defecto');
+                const destLat = 18.4241;
+                const destLng = -69.9267;
+                const data = [{lat: destLat, lon: destLng}];
+                
+                Promise.resolve(data)
+                    .then(data => {
+                        if (data.length > 0) {
+                            const destLatResult = parseFloat(data[0].lat);
+                            const destLngResult = parseFloat(data[0].lon);
+                            
+                            const group = new L.FeatureGroup();
+                            
+                            const markerCliente = L.marker([destLatResult, destLngResult], {
+                                icon: L.icon({
+                                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                                    iconSize: [25, 41],
+                                    iconAnchor: [12, 41],
+                                    popupAnchor: [1, -34],
+                                    shadowSize: [41, 41]
+                                })
+                            }).bindPopup(`<strong>${nombreCliente}</strong><br>${direccionCliente}`);
+                            
+                            group.addLayer(markerCliente);
+                            markerCliente.addTo(mapa);
+                            
+                            let infoText = `
+                                <p>📍 <strong>Cliente:</strong> ${nombreCliente}</p>
+                                <p>📮 <strong>Dirección registrada:</strong> ${direccionCliente}</p>
+                                <p>📌 <strong>Coordenadas:</strong> ${destLat.toFixed(4)}, ${destLng.toFixed(4)}</p>
+                                <p style="font-size: 0.9rem; color: #f39c12; margin-top: 0.5rem;">⚠️ Sin GPS del cliente - mostrando ubicación por defecto</p>
+                            `;
+                            
+                            if (repartidorUbicacion && repartidorUbicacion.lat && repartidorUbicacion.lng) {
+                                console.log('🚗 Ubicación del repartidor:', repartidorUbicacion);
+                                const repLat = repartidorUbicacion.lat;
+                                const repLng = repartidorUbicacion.lng;
+                                
+                                const markerRepartidor = L.marker([repLat, repLng], {
+                                    icon: L.icon({
+                                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                                        iconSize: [25, 41],
+                                        iconAnchor: [12, 41],
+                                        popupAnchor: [1, -34],
+                                        shadowSize: [41, 41]
+                                    })
+                                }).bindPopup(`<strong>🚗 Repartidor</strong><br>En camino`);
+                                
+                                group.addLayer(markerRepartidor);
+                                markerRepartidor.addTo(mapa);
+                                
+                                const polyline = L.polyline([[destLatResult, destLngResult], [repLat, repLng]], {
+                                    color: '#0066ff',
+                                    weight: 3,
+                                    opacity: 0.7,
+                                    dashArray: '5, 5'
+                                }).addTo(mapa);
+                                
+                                group.addLayer(polyline);
+                                
+                                const R = 6371;
+                                const dLat = (repLat - destLatResult) * Math.PI / 180;
+                                const dLng = (repLng - destLngResult) * Math.PI / 180;
+                                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                                          Math.cos(destLatResult * Math.PI / 180) * Math.cos(repLat * Math.PI / 180) *
+                                          Math.sin(dLng/2) * Math.sin(dLng/2);
+                                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                                const distancia = (R * c).toFixed(2);
+                                
+                                const timestamp = repartidorUbicacion.timestamp ? 
+                                    new Date(repartidorUbicacion.timestamp).toLocaleString() : 'Sin actualizar';
+                                
+                                infoText += `
+                                    <hr style="margin: 0.5rem 0;">
+                                    <p>🚗 <strong>Repartidor:</strong> En camino</p>
+                                    <p>📍 <strong>Coordenadas:</strong> ${repLat.toFixed(4)}, ${repLng.toFixed(4)}</p>
+                                    <p>📏 <strong>Distancia:</strong> ${distancia} km</p>
+                                    <p style="font-size: 0.85rem; color: #666;">⏰ Actualizado: ${timestamp}</p>
+                                    <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">🟢 Ubicación del repartidor (en tiempo real)</p>
+                                `;
+                                
+                                try {
+                                    mapa.fitBounds(group.getBounds().pad(0.15), {maxZoom: 15, animate: true});
+                                } catch (e) {
+                                    console.warn('Error en fitBounds:', e);
+                                    mapa.setView([destLatResult, destLngResult], 13);
+                                }
+                            } else {
+                                mapa.setView([destLatResult, destLngResult], 15);
+                            }
+                            
+                            mapaInfo.innerHTML = infoText;
+                        } else {
+                            mapaInfo.innerHTML = `
+                                <p>⚠️ No se encontró la dirección: ${direccionCliente}</p>
+                                <p>Por favor, verifica la dirección e intenta nuevamente.</p>
+                            `;
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error buscando dirección:', err);
+                        mapaInfo.innerHTML = `<p>❌ Error al cargar el mapa. Intenta nuevamente.</p>`;
+                    });
+            }
         } catch (error) {
             console.error('Error creando mapa admin:', error);
             mapaInfo.innerHTML = `<p>❌ Error al crear el mapa. Por favor intenta nuevamente.</p>`;
@@ -1219,12 +1461,10 @@ async function guardarMenu(e) {
         } else if (tipo === 'pdf') {
             const archivoPdf = document.getElementById('archivoMenuPdf').files[0];
             if (archivoPdf) {
-                // Validar tamaño (máximo 20 MB antes de conversión)
                 if (archivoPdf.size > 20 * 1024 * 1024) {
                     alert('❌ El archivo PDF no debe superar 20 MB');
                     return;
                 }
-
                 alert('⏳ Convirtiendo PDF a imagen, esto puede tomar unos segundos...');
                 const imagenBase64 = await pdfToImage(archivoPdf);
                 Object.assign(dataMenu, prepareAssetForFirestore(imagenBase64, 'imagen'));
@@ -1365,7 +1605,6 @@ async function eliminarImagenGaleria(imagenId) {
 
 async function cargarPreviewsConfiguracion() {
     try {
-        // Verificar que db esté inicializado
         if (!db) {
             console.warn('Firebase no está inicializado aún');
             return;
@@ -1466,7 +1705,10 @@ async function eliminarImagenPrincipal() {
     }
 }
 
-// Hacer funciones globales
+// ============================================
+// EXPONER FUNCIONES GLOBALMENTE
+// ============================================
+
 window.cambiarSeccion = cambiarSeccion;
 window.editarProducto = editarProducto;
 window.eliminarProducto = eliminarProducto;
@@ -1482,3 +1724,7 @@ window.eliminarComentario = eliminarComentario;
 window.eliminarMenu = eliminarMenu;
 window.eliminarImagenGaleria = eliminarImagenGaleria;
 
+// Funciones específicas de órdenes en tienda
+window.agregarProductoOrdenTienda = agregarProductoOrdenTienda;
+window.quitarProductoOrdenTienda = quitarProductoOrdenTienda;
+window.imprimirTicketTienda = imprimirTicketTienda;
