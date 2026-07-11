@@ -1651,3 +1651,434 @@
         font-size: 0.85rem;
     }
 }
+
+/* ============================================
+   CAJA â€” HISTORIAL Y REPORTES
+   ============================================ */
+
+.caja-card {
+    background: var(--color-blanco);
+    border-radius: 10px;
+    box-shadow: var(--shadow-md);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-md);
+    border-left: 4px solid var(--color-amarillo);
+    transition: box-shadow 0.2s ease;
+}
+
+.caja-card.caja-abierta {
+    border-left-color: #27ae60;
+}
+
+.caja-card.caja-cerrada {
+    border-left-color: var(--color-gris-1);
+}
+
+.caja-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--spacing-md);
+    gap: var(--spacing-md);
+}
+
+.caja-card-nombre {
+    font-weight: bold;
+    color: var(--color-verde-oscuro);
+    font-size: 1.05rem;
+    display: block;
+}
+
+.caja-card-fecha {
+    font-size: 0.83rem;
+    color: var(--color-gris-1);
+    display: block;
+    margin-top: 0.2rem;
+}
+
+.caja-estado {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.caja-estado-abierta {
+    background: #d4edda;
+    color: #155724;
+}
+
+.caja-estado-cerrada {
+    background: #e9ecef;
+    color: #6c757d;
+}
+
+.caja-card-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-sm);
+}
+
+.caja-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.caja-stat label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-gris-1);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.caja-stat p {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-negro);
+    margin: 0;
+}
+
+.caja-stat-ingreso { color: #27ae60 !important; }
+.caja-stat-egreso  { color: #e74c3c !important; }
+.caja-stat-balance { color: #2980b9 !important; }
+
+/* Reporte Modal */
+.reporte-metricas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--spacing-md);
+    margin: var(--spacing-md) 0 var(--spacing-lg);
+}
+
+.reporte-metrica {
+    background: #f0f4e8;
+    border-radius: 8px;
+    padding: var(--spacing-md);
+}
+
+.reporte-metrica.egreso  { background: #fdf0ed; }
+.reporte-metrica.balance { background: #e8f4fd; }
+
+.reporte-metrica label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-gris-1);
+    margin-bottom: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.reporte-metrica span {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #4a6741;
+}
+
+.reporte-metrica.egreso span  { color: #c0392b; }
+.reporte-metrica.balance span { color: #2980b9; }
+
+.reporte-bloque {
+    margin-bottom: var(--spacing-lg);
+}
+
+.reporte-bloque h4 {
+    color: var(--color-verde-oscuro);
+    margin-bottom: var(--spacing-sm);
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.reporte-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.reporte-tabla th {
+    background: var(--color-verde-oscuro);
+    color: var(--color-blanco);
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 0.8rem;
+}
+
+.reporte-tabla td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--color-gris-2);
+    color: var(--color-negro);
+}
+
+.reporte-tabla tr:last-child td {
+    border-bottom: none;
+}
+
+.reporte-tabla tr:nth-child(even) td {
+    background: #fafafa;
+}
+
+@media (max-width: 768px) {
+    .caja-card-header {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .caja-card-info {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .reporte-metricas {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* ============================================
+   REPORTE DE VENTAS â€” TABS Y TABLAS
+   ============================================ */
+
+.reporte-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.reporte-tab {
+    padding: 0.55rem 1.3rem;
+    border: none;
+    background: transparent;
+    color: var(--color-gris-1);
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.2s ease, border-color 0.2s ease;
+    font-family: var(--font-family);
+    border-radius: 0;
+}
+
+.reporte-tab:hover {
+    color: var(--color-verde-oscuro);
+}
+
+.reporte-tab.active {
+    color: var(--color-verde-oscuro);
+    border-bottom-color: var(--color-verde-oscuro);
+    font-weight: 700;
+}
+
+.rv-periodo-label {
+    font-size: 0.82rem;
+    color: var(--color-gris-1);
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.rv-section {
+    margin-bottom: 1.75rem;
+}
+
+.rv-section-title {
+    font-size: 0.88rem;
+    color: var(--color-verde-oscuro);
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #e0ead0;
+    padding-bottom: 5px;
+}
+
+.rv-metricas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.rv-metrica {
+    background: #f0f4e8;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+}
+
+.rv-metrica.rv-ingreso     { background: #e8f5e9; }
+.rv-metrica.rv-egreso      { background: #fdf0ed; }
+.rv-metrica.rv-balance-pos { background: #e8f4fd; }
+.rv-metrica.rv-balance-neg { background: #fdf0ed; }
+
+.rv-metrica label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-gris-1);
+    margin-bottom: 0.3rem;
+}
+
+.rv-value {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #4a6741;
+}
+
+.rv-metrica.rv-ingreso     .rv-value { color: #27ae60; }
+.rv-metrica.rv-egreso      .rv-value { color: #c0392b; }
+.rv-metrica.rv-balance-pos .rv-value { color: #1a6fa0; }
+.rv-metrica.rv-balance-neg .rv-value { color: #c0392b; }
+
+.rv-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.rv-tabla thead th {
+    background: var(--color-verde-oscuro);
+    color: var(--color-blanco);
+    padding: 7px 10px;
+    text-align: left;
+    font-size: 0.8rem;
+}
+
+.rv-tabla tbody td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    color: var(--color-negro);
+}
+
+.rv-tabla tbody tr:last-child td { border-bottom: none; }
+.rv-tabla tbody tr:nth-child(even) td { background: #fafaf7; }
+
+.rv-center { text-align: center; }
+.rv-right  { text-align: right; }
+.rv-bold   { font-weight: 700; }
+.rv-green  { color: #27ae60; font-weight: 600; }
+.rv-muted  { color: #aaa; }
+.rv-empty  { text-align: center; color: #aaa; font-style: italic; padding: 1rem; }
+
+.rv-rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #e9ecef;
+    color: #6c757d;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.rv-rank-1 { background: #ffd700; color: #7a5900; }
+.rv-rank-2 { background: #c0c0c0; color: #444; }
+.rv-rank-3 { background: #cd7f32; color: #fff; }
+
+@media (max-width: 768px) {
+    .rv-metricas {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .reporte-tab {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.82rem;
+    }
+}
+/* ============================================
+   ÓRDENES EN TIENDA — FLUJO DE ESTADO
+   ============================================ */
+
+/* Badge colors for in-store order states */
+.pedido-card.preparacion  { border-left-color: #f39c12; }
+.pedido-card.listo        { border-left-color: #3498db; }
+.pedido-estado.preparacion { background-color: #f39c12; color: #fff; }
+.pedido-estado.listo       { background-color: #3498db; color: #fff; }
+.pedido-estado.completado  { background-color: #27ae60; color: #fff; }
+
+/* State flow row */
+.ot-estado-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    margin: 0.75rem 0 0.5rem;
+    padding: 0.6rem 0.75rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    gap: 4px;
+}
+
+.ot-estado-arrow {
+    color: #bbb;
+    font-size: 1.1rem;
+    font-weight: 700;
+    padding: 0 2px;
+    user-select: none;
+}
+
+.ot-estado-btn {
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-family: var(--font-family);
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+/* Current / active state */
+.ot-estado-activo {
+    background: var(--color-verde-oscuro);
+    color: #fff;
+    border-color: var(--color-verde-oscuro);
+    cursor: default;
+}
+
+/* Past states (already completed) */
+.ot-estado-pasado {
+    background: #e9ecef;
+    color: #6c757d;
+    border-color: #dee2e6;
+}
+.ot-estado-pasado:hover {
+    background: #dee2e6;
+    color: #495057;
+}
+
+/* Future / pending states */
+.ot-estado-futuro {
+    background: #fff;
+    color: var(--color-verde-oscuro);
+    border-color: var(--color-verde-oscuro);
+}
+.ot-estado-futuro:hover {
+    background: var(--color-verde-oscuro);
+    color: #fff;
+}
+
+@media (max-width: 480px) {
+    .ot-estado-flow {
+        gap: 3px;
+    }
+    .ot-estado-btn {
+        padding: 4px 8px;
+        font-size: 0.72rem;
+    }
+    .ot-estado-arrow {
+        font-size: 0.9rem;
+    }
+}

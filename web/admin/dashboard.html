@@ -113,23 +113,47 @@
             <section id="ordenes_tienda" class="admin-section">
                 <div class="admin-header">
                     <h2>Órdenes en tienda</h2>
-                    <button class="btn-primary" id="btnNuevaOrdenTienda" type="button">+ Nueva orden</button>
+                    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+                        <button class="btn-secondary" id="btnAbrirCaja" type="button"><i class="fas fa-cash-register"></i> Abrir Caja</button>
+                        <button class="btn-secondary" id="btnReporteVentas" type="button"><i class="fas fa-chart-bar"></i> Reporte</button>
+                        <button class="btn-primary" id="btnNuevaOrdenTienda" type="button">+ Nueva orden</button>
+                    </div>
                 </div>
+                <div id="cajaStatusBar" style="display:none; margin-bottom:1rem;"></div>
                 <p style="margin-bottom: 1rem; color: #5f6368;">Selecciona los productos, registra al cliente y la mesa, y genera el ticket térmico al finalizar.</p>
 
                 <div class="card" style="padding: 1rem; margin-bottom: 1rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08);">
                     <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: end;">
                         <div class="form-group">
-                            <label>Nombre del cliente</label>
+                            <label>Nombre del cliente <span style="color:red;">*</span></label>
                             <input type="text" id="nombreOrdenTienda" placeholder="Ej. Juan Pérez" required>
                         </div>
                         <div class="form-group">
-                            <label>Número de mesa</label>
-                            <input type="text" id="mesaOrdenTienda" placeholder="Ej. Mesa 5" required>
+                            <label>Número de teléfono <span style="color:red;">*</span></label>
+                            <input type="tel" id="telefonoOrdenTienda" placeholder="Ej. 9341154258" required>
                         </div>
                         <div class="form-group">
-                            <label>Observaciones</label>
-                            <input type="text" id="observacionesOrdenTienda" placeholder="Opcional">
+                            <label>Tipo de pago <span style="color:red;">*</span></label>
+                            <select id="tipoPagoOrdenTienda" required>
+                                <option value="efectivo">Efectivo</option>
+                                <option value="transferencia">Transferencia</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Número de mesa <span style="color:#999; font-size:0.85rem;">(opcional)</span></label>
+                            <input type="text" id="mesaOrdenTienda" placeholder="Ej. Mesa 5">
+                        </div>
+                        <div class="form-group">
+                            <label>Dirección <span style="color:#999; font-size:0.85rem;">(opcional)</span></label>
+                            <input type="text" id="direccionOrdenTienda" placeholder="Ej. Calle Principal 123">
+                        </div>
+                        <div class="form-group">
+                            <label>Repartidor <span style="color:#999; font-size:0.85rem;">(opcional)</span></label>
+                            <input type="text" id="repartidorOrdenTienda" placeholder="Nombre del repartidor">
+                        </div>
+                        <div class="form-group">
+                            <label>Detalles adicionales <span style="color:#999; font-size:0.85rem;">(opcional)</span></label>
+                            <input type="text" id="detallesOrdenTienda" placeholder="Notas extra, alergias, preferencias...">
                         </div>
                     </div>
                 </div>
@@ -151,6 +175,11 @@
                 <div class="card" style="padding: 1rem; margin-top: 1rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08);">
                     <h3 style="margin-bottom: 0.75rem;">Órdenes recientes en tienda</h3>
                     <div id="listaOrdenesTienda" class="pedidos-list"></div>
+                </div>
+
+                <div class="card" style="padding: 1rem; margin-top: 1rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08);">
+                    <h3 style="margin-bottom: 0.75rem;"><i class="fas fa-history"></i> Historial de Cajas</h3>
+                    <div id="historialCajas"></div>
                 </div>
             </section>
 
@@ -319,6 +348,193 @@
             <h2>Ruta de Entrega</h2>
             <div id="mapAdminContainer" style="height: 70vh; border-radius: 8px; overflow: hidden;"></div>
             <div id="mapaAdminInfo" style="margin-top: 1rem; padding: 1rem; background-color: #f5f5f5; border-radius: 8px;"></div>
+        </div>
+    </div>
+
+    <!-- Modal Abrir Caja -->
+    <div id="modalAbrirCaja" class="modal">
+        <div class="modal-content" style="max-width:500px;">
+            <span class="close" onclick="document.getElementById('modalAbrirCaja').classList.remove('show')">&times;</span>
+            <h2><i class="fas fa-cash-register"></i> Abrir Caja</h2>
+            <div class="form-group">
+                <label>Nombre del cajero <span style="color:red;">*</span></label>
+                <input type="text" id="cajaNombre" placeholder="Ej. María López">
+            </div>
+            <div class="form-group">
+                <label>Fecha de apertura <span style="color:red;">*</span></label>
+                <input type="date" id="cajaFecha">
+            </div>
+            <div class="form-group">
+                <label>Hora de apertura <span style="color:red;">*</span></label>
+                <input type="time" id="cajaHoraApertura">
+            </div>
+            <div class="form-group">
+                <label>Dinero inicial en caja ($) <span style="color:red;">*</span></label>
+                <input type="number" id="cajaDineroInicial" placeholder="0.00" min="0" step="0.01">
+            </div>
+            <div class="form-group">
+                <label>Detalles adicionales <span style="color:#999; font-size:0.85rem;">(opcional)</span></label>
+                <textarea id="cajaDetalles" rows="3" placeholder="Notas adicionales sobre la apertura..."></textarea>
+            </div>
+            <div class="form-actions" style="display:flex; gap:0.75rem; margin-top:1rem;">
+                <button type="button" class="btn-primary" id="btnConfirmarAbrirCaja"><i class="fas fa-lock-open"></i> Abrir Caja</button>
+                <button type="button" class="btn-danger" id="btnCancelarAbrirCaja">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Cerrar Caja -->
+    <div id="modalCerrarCaja" class="modal">
+        <div class="modal-content" style="max-width:500px;">
+            <span class="close" onclick="document.getElementById('modalCerrarCaja').classList.remove('show')">&times;</span>
+            <h2><i class="fas fa-lock"></i> Cerrar Caja</h2>
+            <div id="infoCajaActual"></div>
+            <div class="form-group">
+                <label>Hora de cierre <span style="color:red;">*</span></label>
+                <input type="time" id="cajaHoraCierre">
+            </div>
+            <div class="form-group">
+                <label>Dinero en caja al cierre ($) <span style="color:red;">*</span></label>
+                <input type="number" id="cajaDineroFinal" placeholder="0.00" min="0" step="0.01">
+            </div>
+            <div class="form-group">
+                <label>Egresos del turno ($) <span style="color:#999; font-size:0.85rem;">(gastos, retiros, etc.)</span></label>
+                <input type="number" id="cajaEgresos" placeholder="0.00" min="0" step="0.01" value="0">
+            </div>
+            <div class="form-group">
+                <label>Notas de cierre <span style="color:#999; font-size:0.85rem;">(opcional)</span></label>
+                <textarea id="cajaNotasCierre" rows="3" placeholder="Observaciones del cierre..."></textarea>
+            </div>
+            <div class="form-actions" style="display:flex; gap:0.75rem; margin-top:1rem;">
+                <button type="button" class="btn-danger" id="btnConfirmarCerrarCaja"><i class="fas fa-lock"></i> Cerrar Caja</button>
+                <button type="button" class="btn-secondary" id="btnCancelarCerrarCaja">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Reporte de Caja -->
+    <div id="modalReporteCaja" class="modal">
+        <div class="modal-content" style="max-width:750px;">
+            <span class="close" onclick="document.getElementById('modalReporteCaja').classList.remove('show')">&times;</span>
+            <h2><i class="fas fa-chart-bar"></i> Reporte de Caja</h2>
+            <div style="margin-bottom:0.75rem;">
+                <strong id="reporteCajaNombre"></strong>
+                <span style="color:#5f6368; margin-left:0.75rem;">Período: <span id="reporteCajaPeriodo"></span></span>
+            </div>
+
+            <!-- Métricas resumen -->
+            <div class="reporte-metricas">
+                <div class="reporte-metrica">
+                    <label>Dinero Inicial</label>
+                    <span id="reporteDineroInicial">$0.00</span>
+                </div>
+                <div class="reporte-metrica">
+                    <label>Total Ventas</label>
+                    <span id="reporteTotalVentas">$0.00</span>
+                </div>
+                <div class="reporte-metrica">
+                    <label>Ventas en Efectivo</label>
+                    <span id="reporteVentasEfectivo">$0.00</span>
+                </div>
+                <div class="reporte-metrica">
+                    <label>Ventas por Transferencia</label>
+                    <span id="reporteVentasTransferencia">$0.00</span>
+                </div>
+                <div class="reporte-metrica">
+                    <label>Ingresos Caja Física</label>
+                    <span id="reporteIngresosTotales">$0.00</span>
+                </div>
+                <div class="reporte-metrica">
+                    <label>Ingresos Digitales</label>
+                    <span id="reporteIngresosDigitales">$0.00</span>
+                </div>
+                <div class="reporte-metrica egreso">
+                    <label>Egresos</label>
+                    <span id="reporteEgresos">$0.00</span>
+                </div>
+                <div class="reporte-metrica balance">
+                    <label>Dinero Final Real</label>
+                    <span id="reporteDineroFinal">$0.00</span>
+                </div>
+                <div class="reporte-metrica balance">
+                    <label>Balance (Ing. &minus; Egr.)</label>
+                    <span id="reporteBalance">$0.00</span>
+                </div>
+            </div>
+
+            <div class="reporte-bloque">
+                <h4><i class="fas fa-shopping-cart"></i> Total de órdenes: <span id="reporteTotalOrdenes">0</span></h4>
+            </div>
+
+            <!-- Productos vendidos -->
+            <div class="reporte-bloque">
+                <h4><i class="fas fa-utensils"></i> Productos vendidos</h4>
+                <div style="overflow-x:auto;">
+                    <table class="reporte-tabla">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th style="text-align:center;">Cantidad</th>
+                                <th style="text-align:right;">Precio unit.</th>
+                                <th style="text-align:right;">Total vendido</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reporteProductosTabla"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Órdenes del período -->
+            <div class="reporte-bloque">
+                <h4><i class="fas fa-list"></i> Órdenes del período</h4>
+                <div style="overflow-x:auto;">
+                    <table class="reporte-tabla">
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th>Mesa</th>
+                                <th style="text-align:center;">Hora</th>
+                                <th style="text-align:right;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reporteOrdenesTabla"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Notas -->
+            <div class="reporte-bloque">
+                <h4><i class="fas fa-sticky-note"></i> Notas de cierre</h4>
+                <p id="reporteNotasCierre" style="color:#5f6368; font-style:italic; margin:0;"></p>
+            </div>
+
+            <div style="display:flex; gap:0.75rem; margin-top:1rem; flex-wrap:wrap;">
+                <button type="button" class="btn-primary" onclick="imprimirReporteCaja()"><i class="fas fa-print"></i> Imprimir reporte</button>
+                <button type="button" class="btn-secondary" id="btnCerrarReporteCaja">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Reporte de Ventas -->
+    <div id="modalReporteVentas" class="modal">
+        <div class="modal-content" style="max-width:820px;">
+            <span class="close" onclick="document.getElementById('modalReporteVentas').classList.remove('show')">&times;</span>
+            <h2><i class="fas fa-chart-bar"></i> Reporte de Ventas</h2>
+
+            <!-- Tabs de período -->
+            <div class="reporte-tabs">
+                <button class="reporte-tab active" type="button" onclick="generarReporteVentas('dia')">Hoy</button>
+                <button class="reporte-tab" type="button" onclick="generarReporteVentas('semana')">Esta Semana</button>
+                <button class="reporte-tab" type="button" onclick="generarReporteVentas('mes')">Este Mes</button>
+            </div>
+
+            <!-- Contenido dinámico -->
+            <div id="reporteVentasContenido"></div>
+
+            <div style="display:flex; gap:0.75rem; margin-top:1.25rem; flex-wrap:wrap;">
+                <button type="button" class="btn-primary" onclick="imprimirReporteVentas()"><i class="fas fa-print"></i> Imprimir reporte</button>
+                <button type="button" class="btn-secondary" id="btnCerrarReporteVentas">Cerrar</button>
+            </div>
         </div>
     </div>
 

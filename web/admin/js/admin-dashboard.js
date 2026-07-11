@@ -9,6 +9,8 @@ let menus = [];
 let galeria = [];
 let ordenesTienda = [];
 let ordenTiendaActual = [];
+let cajas = [];
+let cajaActualData = null;
 let productoEditando = null;
 let db = null;
 let auth = null;
@@ -180,6 +182,8 @@ function cambiarSeccion(seccion) {
     } else if (seccion === 'ordenes_tienda') {
         mostrarProductosOrdenTienda();
         mostrarOrdenesTienda();
+        actualizarBotonCaja();
+        mostrarHistorialCajas();
     } else if (seccion === 'pedidos') {
         mostrarPedidos();
     } else if (seccion === 'menus') {
@@ -243,8 +247,18 @@ async function cargarDatos() {
             galeria.push({ id: doc.id, ...doc.data() });
         });
 
+        // Cajas
+        const cajasSnap = await getDocs(query(collection(db, 'cajas'), orderBy('fechaApertura', 'desc')));
+        cajas = [];
+        cajasSnap.forEach(doc => {
+            cajas.push({ id: doc.id, ...doc.data() });
+        });
+        cajaActualData = cajas.find(c => c.estado === 'abierta') || null;
+
         document.getElementById('loadingMessage').style.display = 'none';
         actualizarDashboard();
+        actualizarBotonCaja();
+        mostrarHistorialCajas();
         console.log('Datos cargados correctamente');
         
         iniciarListenerPedidosAdmin();
@@ -477,11 +491,31 @@ function setupFormularios() {
         ordenTiendaActual = [];
         document.getElementById('nombreOrdenTienda').value = '';
         document.getElementById('mesaOrdenTienda').value = '';
-        document.getElementById('observacionesOrdenTienda').value = '';
+        document.getElementById('direccionOrdenTienda').value = '';
+        document.getElementById('repartidorOrdenTienda').value = '';
+        document.getElementById('detallesOrdenTienda').value = '';
         actualizarResumenOrdenTienda();
     });
 
     document.getElementById('btnGuardarOrdenTienda').addEventListener('click', guardarOrdenTienda);
+
+    // ========== CAJA ==========
+    document.getElementById('btnAbrirCaja').addEventListener('click', mostrarModalAbrirCaja);
+    document.getElementById('btnReporteVentas').addEventListener('click', mostrarModalReporteVentas);
+    document.getElementById('btnCerrarReporteVentas').addEventListener('click', () => {
+        document.getElementById('modalReporteVentas').classList.remove('show');
+    });
+    document.getElementById('btnConfirmarAbrirCaja').addEventListener('click', abrirCaja);
+    document.getElementById('btnCancelarAbrirCaja').addEventListener('click', () => {
+        document.getElementById('modalAbrirCaja').classList.remove('show');
+    });
+    document.getElementById('btnConfirmarCerrarCaja').addEventListener('click', cerrarCaja);
+    document.getElementById('btnCancelarCerrarCaja').addEventListener('click', () => {
+        document.getElementById('modalCerrarCaja').classList.remove('show');
+    });
+    document.getElementById('btnCerrarReporteCaja').addEventListener('click', () => {
+        document.getElementById('modalReporteCaja').classList.remove('show');
+    });
 }
 
 async function guardarProducto(e) {
@@ -698,6 +732,48 @@ function actualizarResumenOrdenTienda() {
     `).join('');
 }
 
+function calcularTotalesCaja(ordenesPeriodo) {
+    const resumen = {
+        totalVentas: 0,
+        totalVentasEfectivo: 0,
+        totalVentasTransferencia: 0,
+        totalOrdenes: ordenesPeriodo.length,
+        productosVendidos: {},
+        pagos: {
+            efectivo: { cantidad: 0, total: 0 },
+            transferencia: { cantidad: 0, total: 0 }
+        }
+    };
+
+    ordenesPeriodo.forEach(orden => {
+        const totalOrden = Number(orden.total || 0);
+        const tipoPago = String(orden.tipoPago || orden.metodoPago || 'efectivo').toLowerCase();
+
+        resumen.totalVentas += totalOrden;
+
+        if (tipoPago === 'transferencia') {
+            resumen.totalVentasTransferencia += totalOrden;
+            resumen.pagos.transferencia.cantidad += 1;
+            resumen.pagos.transferencia.total += totalOrden;
+        } else {
+            resumen.totalVentasEfectivo += totalOrden;
+            resumen.pagos.efectivo.cantidad += 1;
+            resumen.pagos.efectivo.total += totalOrden;
+        }
+
+        (orden.items || []).forEach(item => {
+            const key = item.nombre;
+            if (!resumen.productosVendidos[key]) {
+                resumen.productosVendidos[key] = { cantidad: 0, total: 0, precio: item.precio };
+            }
+            resumen.productosVendidos[key].cantidad += item.cantidad;
+            resumen.productosVendidos[key].total += Number(item.precio || 0) * item.cantidad;
+        });
+    });
+
+    return resumen;
+}
+
 async function guardarOrdenTienda() {
     if (!ordenTiendaActual.length) {
         alert('Selecciona al menos un producto para la orden.');
@@ -705,11 +781,20 @@ async function guardarOrdenTienda() {
     }
 
     const nombreCliente = document.getElementById('nombreOrdenTienda')?.value.trim();
+    const telefonoCliente = document.getElementById('telefonoOrdenTienda')?.value.trim();
+    const tipoPago = document.getElementById('tipoPagoOrdenTienda')?.value || 'efectivo';
     const mesa = document.getElementById('mesaOrdenTienda')?.value.trim();
-    const observaciones = document.getElementById('observacionesOrdenTienda')?.value.trim();
+    const direccion = document.getElementById('direccionOrdenTienda')?.value.trim();
+    const repartidor = document.getElementById('repartidorOrdenTienda')?.value.trim();
+    const detallesAdicionales = document.getElementById('detallesOrdenTienda')?.value.trim();
 
-    if (!nombreCliente || !mesa) {
-        alert('Escribe el nombre del cliente y el número de mesa para continuar.');
+    if (!nombreCliente) {
+        alert('Escribe el nombre del cliente para continuar.');
+        return;
+    }
+
+    if (!telefonoCliente) {
+        alert('Escribe el número de teléfono del cliente para continuar.');
         return;
     }
 
@@ -719,12 +804,16 @@ async function guardarOrdenTienda() {
 
         const orden = {
             nombre: nombreCliente,
-            mesa,
-            observaciones: observaciones || '',
+            telefono: telefonoCliente,
+            mesa: mesa || '',
+            direccion: direccion || '',
+            repartidor: repartidor || '',
+            detallesAdicionales: detallesAdicionales || '',
             items: ordenTiendaActual,
             total,
             estado: 'pendiente',
-            metodoPago: 'en_tienda',
+            metodoPago: tipoPago,
+            tipoPago,
             fecha: new Date(),
             tipo: 'tienda'
         };
@@ -749,8 +838,12 @@ async function guardarOrdenTienda() {
 
         ordenTiendaActual = [];
         document.getElementById('nombreOrdenTienda').value = '';
+        document.getElementById('telefonoOrdenTienda').value = '';
+        document.getElementById('tipoPagoOrdenTienda').value = 'efectivo';
         document.getElementById('mesaOrdenTienda').value = '';
-        document.getElementById('observacionesOrdenTienda').value = '';
+        document.getElementById('direccionOrdenTienda').value = '';
+        document.getElementById('repartidorOrdenTienda').value = '';
+        document.getElementById('detallesOrdenTienda').value = '';
         actualizarResumenOrdenTienda();
         await cargarDatos();
         mostrarOrdenesTienda();
@@ -793,9 +886,13 @@ function generarTicketTienda(orden, printWindow = null) {
             <div class="center small">Orden en tienda</div>
             <hr>
             <div class="small">Cliente: ${orden.nombre}</div>
-            <div class="small">Mesa: ${orden.mesa}</div>
+            ${orden.telefono ? `<div class="small">Teléfono: ${orden.telefono}</div>` : ''}
+            ${orden.mesa ? `<div class="small">Mesa: ${orden.mesa}</div>` : ''}
             <div class="small">Fecha: ${fechaTexto}</div>
-            ${orden.observaciones ? `<div class="small">Obs: ${orden.observaciones}</div>` : ''}
+            <div class="small">Pago: ${orden.tipoPago === 'transferencia' ? 'Transferencia' : 'Efectivo'}</div>
+            ${orden.direccion ? `<div class="small">Dirección: ${orden.direccion}</div>` : ''}
+            ${orden.repartidor ? `<div class="small">Repartidor: ${orden.repartidor}</div>` : ''}
+            ${orden.detallesAdicionales ? `<div class="small">Detalles: ${orden.detallesAdicionales}</div>` : ''}
             <hr>
             <pre>${items}</pre>
             <hr>
@@ -832,25 +929,51 @@ function mostrarOrdenesTienda() {
         return;
     }
 
+    const ESTADOS = [
+        { key: 'pendiente',   label: 'Pendiente' },
+        { key: 'preparacion', label: 'En Preparación' },
+        { key: 'listo',       label: 'Listo' },
+        { key: 'completado',  label: 'Completado' }
+    ];
+
     ordenesTienda.forEach(orden => {
         const fechaTicket = new Date(orden.fecha?.toDate?.() || orden.fecha);
         const fechaTexto = isNaN(fechaTicket.getTime()) ? 'Fecha no disponible' : fechaTicket.toLocaleString('es-MX');
         const itemsHtml = orden.items.map(item => `<div class="pedido-item"><span class="pedido-item-nombre">${item.nombre}</span><span class="pedido-item-cantidad">x${item.cantidad}</span><span class="pedido-item-precio">$${(item.precio * item.cantidad).toFixed(2)}</span></div>`).join('');
 
+        const estadoActual = orden.estado || 'pendiente';
+        const estadoLabel = ESTADOS.find(e => e.key === estadoActual)?.label || estadoActual;
+        const idxActual = ESTADOS.findIndex(e => e.key === estadoActual);
+
+        const flujoEstados = ESTADOS.map((est, idx) => {
+            const isActivo = idx === idxActual;
+            const isPasado = idx < idxActual;
+            const cls = isActivo ? 'ot-estado-btn ot-estado-activo' : isPasado ? 'ot-estado-btn ot-estado-pasado' : 'ot-estado-btn ot-estado-futuro';
+            return `<button type="button" class="${cls}" onclick="cambiarEstadoOrdenTienda('${orden.id}', '${est.key}')"${isActivo ? ' disabled' : ''}>${est.label}</button>`;
+        }).join('<span class="ot-estado-arrow">›</span>');
+
         const card = document.createElement('div');
-        card.className = 'pedido-card pendiente';
+        card.className = `pedido-card ${estadoActual}`;
         card.innerHTML = `
             <div class="pedido-header">
-                <div class="pedido-id">${orden.nombre} · Mesa ${orden.mesa}</div>
-                <span class="pedido-estado pendiente">${orden.estado}</span>
+                <div class="pedido-id">${orden.nombre}${orden.mesa ? ` · Mesa ${orden.mesa}` : ''}</div>
+                <span class="pedido-estado ${estadoActual}">${estadoLabel}</span>
             </div>
             <div class="pedido-info">
                 <div class="pedido-detail"><label>Fecha</label><p>${fechaTexto}</p></div>
+                <div class="pedido-detail"><label>Teléfono</label><p>${orden.telefono || '-'}</p></div>
+                <div class="pedido-detail"><label>Pago</label><p>${orden.tipoPago === 'transferencia' ? 'Transferencia' : 'Efectivo'}</p></div>
                 <div class="pedido-detail"><label>Total</label><p style="color:#dbb42a;font-weight:bold;">$${Number(orden.total || 0).toFixed(2)}</p></div>
-                ${orden.observaciones ? `<div class="pedido-detail"><label>Observaciones</label><p>${orden.observaciones}</p></div>` : ''}
+                ${orden.direccion ? `<div class="pedido-detail"><label>Direcci\u00f3n</label><p>${orden.direccion}</p></div>` : ''}
+                ${orden.repartidor ? `<div class="pedido-detail"><label>Repartidor</label><p>${orden.repartidor}</p></div>` : ''}
+                ${orden.detallesAdicionales ? `<div class="pedido-detail"><label>Detalles</label><p>${orden.detallesAdicionales}</p></div>` : ''}
             </div>
-            <div class="pedido-items"><h4>Artículos:</h4>${itemsHtml}<div class="pedido-total">Total: $${Number(orden.total || 0).toFixed(2)}</div></div>
-            <div class="pedido-actions"><button class="btn-primary" type="button" onclick="imprimirTicketTienda('${orden.id}')">Imprimir ticket</button></div>`;
+            <div class="pedido-items"><h4>Art\u00edculos:</h4>${itemsHtml}<div class="pedido-total">Total: $${Number(orden.total || 0).toFixed(2)}</div></div>
+            <div class="ot-estado-flow">${flujoEstados}</div>
+            <div class="pedido-actions">
+                <button class="btn-secondary" type="button" onclick="imprimirTicketTienda('${orden.id}')"><i class="fas fa-print"></i> Ticket</button>
+                <button class="btn-danger" type="button" onclick="eliminarOrdenTienda('${orden.id}')">Eliminar</button>
+            </div>`;
         container.appendChild(card);
     });
 }
@@ -1709,6 +1832,27 @@ async function eliminarImagenPrincipal() {
 // EXPONER FUNCIONES GLOBALMENTE
 // ============================================
 
+async function cambiarEstadoOrdenTienda(ordenId, nuevoEstado) {
+    try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+        await updateDoc(doc(db, 'pedidos_tienda', ordenId), { estado: nuevoEstado });
+        // El listener en tiempo real actualizará la UI automáticamente
+    } catch (error) {
+        alert('❌ Error al actualizar el estado: ' + error.message);
+    }
+}
+
+async function eliminarOrdenTienda(ordenId) {
+    if (!confirm('¿Eliminar esta orden? Esta acción no se puede deshacer.')) return;
+    try {
+        const { deleteDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+        await deleteDoc(doc(db, 'pedidos_tienda', ordenId));
+        // El listener en tiempo real actualizará la UI automáticamente
+    } catch (error) {
+        alert('❌ Error al eliminar la orden: ' + error.message);
+    }
+}
+
 window.cambiarSeccion = cambiarSeccion;
 window.editarProducto = editarProducto;
 window.eliminarProducto = eliminarProducto;
@@ -1728,3 +1872,848 @@ window.eliminarImagenGaleria = eliminarImagenGaleria;
 window.agregarProductoOrdenTienda = agregarProductoOrdenTienda;
 window.quitarProductoOrdenTienda = quitarProductoOrdenTienda;
 window.imprimirTicketTienda = imprimirTicketTienda;
+window.cambiarEstadoOrdenTienda = cambiarEstadoOrdenTienda;
+window.eliminarOrdenTienda = eliminarOrdenTienda;
+
+// Funciones de caja
+window.verReporteCaja = verReporteCaja;
+window.imprimirReporteCaja = imprimirReporteCaja;
+window.mostrarModalCerrarCaja = mostrarModalCerrarCaja;
+
+// Funciones de reporte de ventas
+window.generarReporteVentas = generarReporteVentas;
+window.imprimirReporteVentas = imprimirReporteVentas;
+
+// ============================================
+// REPORTE DE VENTAS (MÁS/MENOS VENDIDOS + FINANZAS)
+// ============================================
+
+function mostrarModalReporteVentas() {
+    document.getElementById('modalReporteVentas').classList.add('show');
+    generarReporteVentas('dia');
+}
+
+function generarReporteVentas(periodo) {
+    // Actualizar tab activo
+    const tabs = document.querySelectorAll('#modalReporteVentas .reporte-tab');
+    const idxMap = { dia: 0, semana: 1, mes: 2 };
+    tabs.forEach((t, i) => t.classList.toggle('active', i === idxMap[periodo]));
+
+    const ahora = new Date();
+    const inicio = new Date();
+
+    if (periodo === 'dia') {
+        inicio.setHours(0, 0, 0, 0);
+    } else if (periodo === 'semana') {
+        inicio.setDate(ahora.getDate() - 6);
+        inicio.setHours(0, 0, 0, 0);
+    } else { // mes
+        inicio.setDate(1);
+        inicio.setHours(0, 0, 0, 0);
+    }
+
+    const periodoLabel = { dia: 'Hoy (' + ahora.toLocaleDateString('es-MX') + ')', semana: 'Últimos 7 días', mes: 'Este mes (' + ahora.toLocaleString('es-MX', { month: 'long', year: 'numeric' }) + ')' }[periodo];
+
+    // ---- Filtrar órdenes ----
+    const ordenesFiltradas = ordenesTienda.filter(o => {
+        const f = new Date(o.fecha?.toDate?.() || o.fecha);
+        return f >= inicio && f <= ahora;
+    });
+
+    // ---- Filtrar cajas cerradas en el período ----
+    const cajasFiltradas = cajas.filter(c => {
+        if (c.estado !== 'cerrada' || !c.fechaCierre) return false;
+        const f = new Date(c.fechaCierre?.toDate?.() || c.fechaCierre);
+        return f >= inicio && f <= ahora;
+    });
+
+    // ---- Estadísticas financieras ----
+    const totalIngresos = ordenesFiltradas.reduce((s, o) => s + Number(o.total || 0), 0);
+    const totalOrdenes = ordenesFiltradas.length;
+    const totalEgresos = cajasFiltradas.reduce((s, c) => s + Number(c.egresos || 0), 0);
+    const totalTurnos = cajasFiltradas.length;
+    const balance = totalIngresos - totalEgresos;
+
+    // ---- Estadísticas de productos ----
+    const mapaProductos = {};
+    ordenesFiltradas.forEach(orden => {
+        (orden.items || []).forEach(item => {
+            const key = item.nombre;
+            if (!mapaProductos[key]) mapaProductos[key] = { nombre: key, cantidad: 0, total: 0 };
+            mapaProductos[key].cantidad += item.cantidad;
+            mapaProductos[key].total += Number(item.precio || 0) * item.cantidad;
+        });
+    });
+
+    const vendidos = Object.values(mapaProductos);
+    const masVendidos = [...vendidos].sort((a, b) => b.cantidad - a.cantidad).slice(0, 10);
+
+    // Productos con 0 ventas en el período se incluyen en "menos vendidos"
+    const nombresConVentas = new Set(vendidos.map(p => p.nombre));
+    const sinVentas = productos
+        .filter(p => !nombresConVentas.has(p.nombre))
+        .map(p => ({ nombre: p.nombre, cantidad: 0, total: 0 }));
+    const menosVendidos = [...vendidos, ...sinVentas]
+        .sort((a, b) => a.cantidad - b.cantidad)
+        .slice(0, 10);
+
+    // ---- Helpers HTML ----
+    const filasProductos = (lista, isMas) => lista.length > 0
+        ? lista.map((p, i) => `
+            <tr>
+                <td><span class="rv-rank${isMas && i < 3 ? ' rv-rank-' + (i + 1) : ''}">${i + 1}</span></td>
+                <td>${p.nombre}</td>
+                <td class="rv-center rv-bold">${p.cantidad}</td>
+                <td class="rv-right ${isMas ? 'rv-green' : 'rv-muted'}">$${p.total.toFixed(2)}</td>
+            </tr>`).join('')
+        : '<tr><td colspan="4" class="rv-empty">Sin datos en este período</td></tr>';
+
+    // ---- Renderizar ----
+    document.getElementById('reporteVentasContenido').innerHTML = `
+        <p class="rv-periodo-label"><i class="fas fa-calendar-alt"></i> ${periodoLabel}</p>
+
+        <!-- Finanzas -->
+        <div class="rv-section">
+            <h3 class="rv-section-title"><i class="fas fa-coins"></i> Resumen Financiero</h3>
+            <div class="rv-metricas">
+                <div class="rv-metrica">
+                    <label>Órdenes registradas</label>
+                    <span class="rv-value">${totalOrdenes}</span>
+                </div>
+                <div class="rv-metrica">
+                    <label>Turnos de caja cerrados</label>
+                    <span class="rv-value">${totalTurnos}</span>
+                </div>
+                <div class="rv-metrica rv-ingreso">
+                    <label>Ingresos (ventas)</label>
+                    <span class="rv-value">$${totalIngresos.toFixed(2)}</span>
+                </div>
+                <div class="rv-metrica rv-egreso">
+                    <label>Egresos (gastos/retiros)</label>
+                    <span class="rv-value">$${totalEgresos.toFixed(2)}</span>
+                </div>
+                <div class="rv-metrica ${balance >= 0 ? 'rv-balance-pos' : 'rv-balance-neg'}">
+                    <label>Balance neto</label>
+                    <span class="rv-value">$${balance.toFixed(2)}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Más vendidos -->
+        <div class="rv-section">
+            <h3 class="rv-section-title"><i class="fas fa-fire"></i> Productos Más Vendidos</h3>
+            <div style="overflow-x:auto;">
+                <table class="rv-tabla">
+                    <thead>
+                        <tr>
+                            <th style="width:40px;">#</th>
+                            <th>Producto</th>
+                            <th class="rv-center">Cantidad vendida</th>
+                            <th class="rv-right">Total recaudado</th>
+                        </tr>
+                    </thead>
+                    <tbody>${filasProductos(masVendidos, true)}</tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Menos vendidos -->
+        <div class="rv-section">
+            <h3 class="rv-section-title"><i class="fas fa-snowflake"></i> Productos Menos Vendidos</h3>
+            <p style="font-size:0.8rem; color:#5f6368; margin-bottom:0.5rem;">Incluye productos sin ventas en el período.</p>
+            <div style="overflow-x:auto;">
+                <table class="rv-tabla">
+                    <thead>
+                        <tr>
+                            <th style="width:40px;">#</th>
+                            <th>Producto</th>
+                            <th class="rv-center">Cantidad vendida</th>
+                            <th class="rv-right">Total recaudado</th>
+                        </tr>
+                    </thead>
+                    <tbody>${filasProductos(menosVendidos, false)}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function imprimirReporteVentas() {
+    const periodoActivo = document.querySelector('#modalReporteVentas .reporte-tab.active')?.textContent?.trim() || 'Período';
+    const contenidoEl = document.getElementById('reporteVentasContenido');
+    if (!contenidoEl) return;
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Reporte de Ventas \u2014 ${periodoActivo}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #1a1a1a; padding: 1.8cm 2.2cm; }
+    @page { size: A4; margin: 1.8cm 2.2cm; }
+
+    .header { border-bottom: 3px solid #4a6741; padding-bottom: 10px; margin-bottom: 14px; }
+    .header h1 { font-size: 18px; color: #4a6741; }
+    .header p { color: #666; font-size: 10px; margin-top: 3px; }
+
+    .rv-periodo-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+                        color: #888; margin-bottom: 12px; }
+    .rv-section { margin-bottom: 18px; }
+    .rv-section-title { font-size: 10px; color: #4a6741; text-transform: uppercase;
+                        letter-spacing: 0.04em; border-bottom: 1px solid #c8dab6;
+                        padding-bottom: 3px; margin-bottom: 8px; }
+    .rv-metricas { display: flex; flex-wrap: wrap; gap: 6px; }
+    .rv-metrica { flex: 1; min-width: 110px; background: #f0f4e8; padding: 7px 9px; border-radius: 5px; }
+    .rv-metrica.rv-ingreso { background: #e8f5e9; }
+    .rv-metrica.rv-egreso  { background: #fdf0ed; }
+    .rv-metrica.rv-balance-pos { background: #e8f4fd; }
+    .rv-metrica.rv-balance-neg { background: #fdf0ed; }
+    .rv-metrica label { display: block; font-size: 8px; text-transform: uppercase; color: #777; margin-bottom: 2px; }
+    .rv-value { font-size: 14px; font-weight: 700; color: #4a6741; }
+    .rv-metrica.rv-ingreso .rv-value { color: #27ae60; }
+    .rv-metrica.rv-egreso .rv-value  { color: #c0392b; }
+    .rv-metrica.rv-balance-pos .rv-value { color: #1a6fa0; }
+    .rv-metrica.rv-balance-neg .rv-value { color: #c0392b; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px; }
+    thead th { background: #4a6741; color: #fff; padding: 5px 8px; text-align: left; font-size: 9px; }
+    tbody td { padding: 5px 8px; border-bottom: 1px solid #eee; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:nth-child(even) td { background: #f8faf5; }
+    .rv-center { text-align: center; }
+    .rv-right  { text-align: right; }
+    .rv-bold   { font-weight: 700; }
+    .rv-green  { color: #27ae60; font-weight: 600; }
+    .rv-muted  { color: #999; }
+    .rv-empty  { text-align: center; color: #aaa; font-style: italic; padding: 8px; }
+    .rv-rank   { font-weight: 700; }
+    .rv-rank-1 { color: #b8860b; }
+    .rv-rank-2 { color: #555; }
+    .rv-rank-3 { color: #8b4513; }
+    .footer { margin-top: 20px; border-top: 1px solid #ddd; padding-top: 6px;
+              font-size: 9px; color: #aaa; display: flex; justify-content: space-between; }
+    p[style] { font-size: 10px !important; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>CAROLAS GREEN \u2014 Reporte de Ventas</h1>
+    <p>Per\u00edodo: <strong>${periodoActivo}</strong> &nbsp;|&nbsp; Generado: ${new Date().toLocaleString('es-MX')}</p>
+  </div>
+  ${contenidoEl.innerHTML}
+  <div class="footer">
+    <span>CAROLAS GREEN \u2014 Sistema de Punto de Venta</span>
+    <span>${new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+  </div>
+  <script>window.onload = function() { window.print(); };<\/script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=920,height=760');
+    if (!win) { alert('Permite ventanas emergentes para imprimir el reporte.'); return; }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+}
+
+// ============================================
+// CAJA (APERTURA / CIERRE / REPORTES)
+// ============================================
+
+function actualizarBotonCaja() {
+    const btn = document.getElementById('btnAbrirCaja');
+    const statusBar = document.getElementById('cajaStatusBar');
+    if (!btn) return;
+
+    if (cajaActualData) {
+        btn.innerHTML = '<i class="fas fa-lock"></i> Cerrar Caja';
+        btn.className = 'btn-danger';
+        if (statusBar) {
+            statusBar.innerHTML = `
+                <div style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; background:#e8f5e9; border-radius:8px; border-left:4px solid #27ae60;">
+                    <i class="fas fa-cash-register" style="color:#27ae60; font-size:1.2rem;"></i>
+                    <div>
+                        <strong style="color:#27ae60;">Caja Abierta</strong>
+                        <span style="color:#5f6368; margin-left:0.75rem;">Cajero: ${cajaActualData.nombre} &nbsp;&middot;&nbsp; Apertura: ${cajaActualData.horaApertura} &nbsp;&middot;&nbsp; Dinero inicial: $${Number(cajaActualData.dineroInicial || 0).toFixed(2)}</span>
+                    </div>
+                </div>`;
+            statusBar.style.display = 'block';
+        }
+    } else {
+        btn.innerHTML = '<i class="fas fa-cash-register"></i> Abrir Caja';
+        btn.className = 'btn-secondary';
+        if (statusBar) {
+            statusBar.style.display = 'none';
+            statusBar.innerHTML = '';
+        }
+    }
+}
+
+function mostrarModalAbrirCaja() {
+    if (cajaActualData) {
+        mostrarModalCerrarCaja();
+        return;
+    }
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    document.getElementById('cajaFecha').value = `${yyyy}-${mm}-${dd}`;
+    document.getElementById('cajaHoraApertura').value = now.toTimeString().slice(0, 5);
+    document.getElementById('cajaNombre').value = '';
+    document.getElementById('cajaDineroInicial').value = '';
+    document.getElementById('cajaDetalles').value = '';
+    document.getElementById('modalAbrirCaja').classList.add('show');
+}
+
+async function abrirCaja() {
+    const nombre = document.getElementById('cajaNombre').value.trim();
+    const fecha = document.getElementById('cajaFecha').value;
+    const horaApertura = document.getElementById('cajaHoraApertura').value;
+    const dineroInicial = parseFloat(document.getElementById('cajaDineroInicial').value);
+    const detalles = document.getElementById('cajaDetalles').value.trim();
+
+    if (!nombre || !fecha || !horaApertura || isNaN(dineroInicial) || dineroInicial < 0) {
+        alert('Por favor completa los campos obligatorios: Nombre, Fecha, Hora y Dinero inicial.');
+        return;
+    }
+
+    try {
+        const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+
+        await addDoc(collection(db, 'cajas'), {
+            nombre,
+            fecha,
+            horaApertura,
+            dineroInicial,
+            detalles: detalles || '',
+            estado: 'abierta',
+            fechaApertura: new Date(),
+            fechaCierre: null,
+            horaCierre: null,
+            dineroFinal: null,
+            egresos: 0,
+            notasCierre: '',
+            totalVentas: null,
+            totalOrdenes: null,
+            productosVendidos: {},
+            ordenesIds: []
+        });
+
+        document.getElementById('modalAbrirCaja').classList.remove('show');
+        await cargarDatosCajas();
+        actualizarBotonCaja();
+        mostrarHistorialCajas();
+        alert('✅ Caja abierta correctamente.');
+    } catch (error) {
+        console.error('Error abriendo caja:', error);
+        alert('❌ No se pudo abrir la caja: ' + error.message);
+    }
+}
+
+function mostrarModalCerrarCaja() {
+    if (!cajaActualData) {
+        alert('No hay ninguna caja abierta actualmente.');
+        return;
+    }
+    const now = new Date();
+    document.getElementById('cajaHoraCierre').value = now.toTimeString().slice(0, 5);
+    document.getElementById('cajaDineroFinal').value = '';
+    document.getElementById('cajaEgresos').value = '0';
+    document.getElementById('cajaNotasCierre').value = '';
+
+    // Calcular total vendido desde la apertura de esta caja
+    const fechaApertura = new Date(cajaActualData.fechaApertura?.toDate?.() || cajaActualData.fechaApertura);
+    const ordenesPeriodo = ordenesTienda.filter(o => {
+        const f = new Date(o.fecha?.toDate?.() || o.fecha);
+        return f >= fechaApertura && f <= now;
+    });
+    const resumenCaja = calcularTotalesCaja(ordenesPeriodo);
+    const totalVendido = resumenCaja.totalVentas;
+    const totalEfectivo = resumenCaja.totalVentasEfectivo;
+    const totalTransferencia = resumenCaja.totalVentasTransferencia;
+    const cantidadOrdenes = resumenCaja.totalOrdenes;
+
+    document.getElementById('infoCajaActual').innerHTML = `
+        <div style="background:#f0f4e8; padding:0.75rem 1rem; border-radius:8px; margin-bottom:1rem; border-left:4px solid #798839;">
+            <p style="margin:0.25rem 0;"><strong>Cajero:</strong> ${cajaActualData.nombre}</p>
+            <p style="margin:0.25rem 0;"><strong>Fecha:</strong> ${cajaActualData.fecha}</p>
+            <p style="margin:0.25rem 0;"><strong>Hora apertura:</strong> ${cajaActualData.horaApertura}</p>
+            <p style="margin:0.25rem 0;"><strong>Dinero inicial:</strong> $${Number(cajaActualData.dineroInicial || 0).toFixed(2)}</p>
+            <hr style="border:none; border-top:1px solid #c8dab6; margin:0.5rem 0;">
+            <p style="margin:0.25rem 0;"><strong>Ventas en efectivo (caja física):</strong> <span style="color:#27ae60; font-weight:700; font-size:1.05rem;">$${totalEfectivo.toFixed(2)}</span></p>
+            <p style="margin:0.25rem 0;"><strong>Ventas por transferencia (caja digital):</strong> <span style="color:#1a6fa0; font-weight:700; font-size:1.05rem;">$${totalTransferencia.toFixed(2)}</span></p>
+            <p style="margin:0.25rem 0;"><strong>Total ventas del turno:</strong> $${totalVendido.toFixed(2)}</p>
+            <p style="margin:0.25rem 0;"><strong>Órdenes del turno:</strong> ${cantidadOrdenes}</p>
+        </div>
+    `;
+
+    document.getElementById('modalCerrarCaja').classList.add('show');
+}
+
+async function cerrarCaja() {
+    if (!cajaActualData) return;
+
+    const horaCierre = document.getElementById('cajaHoraCierre').value;
+    const dineroFinal = parseFloat(document.getElementById('cajaDineroFinal').value);
+    const egresos = parseFloat(document.getElementById('cajaEgresos').value) || 0;
+    const notasCierre = document.getElementById('cajaNotasCierre').value.trim();
+
+    if (!horaCierre || isNaN(dineroFinal) || dineroFinal < 0) {
+        alert('Por favor completa la hora de cierre y el dinero final en caja.');
+        return;
+    }
+
+    try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+
+        const fechaApertura = new Date(cajaActualData.fechaApertura?.toDate?.() || cajaActualData.fechaApertura);
+        const fechaCierre = new Date();
+
+        // Compute totals from orders in this caja period
+        const ordenesPeriodo = ordenesTienda.filter(o => {
+            const fechaOrden = new Date(o.fecha?.toDate?.() || o.fecha);
+            return fechaOrden >= fechaApertura && fechaOrden <= fechaCierre;
+        });
+
+        const resumenCaja = calcularTotalesCaja(ordenesPeriodo);
+        const totalVentas = resumenCaja.totalVentas;
+        const totalVentasEfectivo = resumenCaja.totalVentasEfectivo;
+        const totalVentasTransferencia = resumenCaja.totalVentasTransferencia;
+        const totalOrdenes = resumenCaja.totalOrdenes;
+        const productosVendidos = resumenCaja.productosVendidos;
+
+        await updateDoc(doc(db, 'cajas', cajaActualData.id), {
+            estado: 'cerrada',
+            fechaCierre,
+            horaCierre,
+            dineroFinal,
+            egresos,
+            notasCierre: notasCierre || '',
+            totalVentas,
+            totalVentasEfectivo,
+            totalVentasTransferencia,
+            totalOrdenes,
+            productosVendidos,
+            ordenesIds: ordenesPeriodo.map(o => o.id)
+        });
+
+        // Capturar todos los datos antes de que cargarDatosCajas() sobreescriba cajaActualData
+        const cajaParaPDF = {
+            nombre: cajaActualData.nombre,
+            fecha: cajaActualData.fecha,
+            horaApertura: cajaActualData.horaApertura,
+            horaCierre,
+            dineroInicial: Number(cajaActualData.dineroInicial || 0),
+            dineroFinal,
+            egresos,
+            notasCierre: notasCierre || '',
+            totalVentas,
+            totalVentasEfectivo,
+            totalVentasTransferencia,
+            totalOrdenes,
+            productosVendidos,
+            ordenesPeriodo
+        };
+
+        document.getElementById('modalCerrarCaja').classList.remove('show');
+        await cargarDatosCajas();
+        actualizarBotonCaja();
+        mostrarHistorialCajas();
+        generarPDFCaja(cajaParaPDF);
+    } catch (error) {
+        console.error('Error cerrando caja:', error);
+        alert('❌ No se pudo cerrar la caja: ' + error.message);
+    }
+}
+
+async function cargarDatosCajas() {
+    try {
+        const { collection, getDocs, query, orderBy } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+        const cajasSnap = await getDocs(query(collection(db, 'cajas'), orderBy('fechaApertura', 'desc')));
+        cajas = [];
+        cajasSnap.forEach(docSnap => {
+            cajas.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        cajaActualData = cajas.find(c => c.estado === 'abierta') || null;
+    } catch (error) {
+        console.error('Error cargando cajas:', error);
+    }
+}
+
+function generarPDFCaja(info) {
+    const {
+        nombre, fecha, horaApertura, horaCierre,
+        dineroInicial, dineroFinal, egresos, notasCierre,
+        totalVentas, totalVentasEfectivo = 0, totalVentasTransferencia = 0,
+        totalOrdenes, productosVendidos, ordenesPeriodo
+    } = info;
+
+    const ingresos = dineroInicial + Number(totalVentasEfectivo || 0);
+    const ingresosDigitales = Number(totalVentasTransferencia || 0);
+    const balance = ingresos - egresos;
+
+    const productosOrdenados = Object.entries(productosVendidos || {})
+        .map(([nom, data]) => ({ nom, ...data }))
+        .sort((a, b) => b.total - a.total);
+
+    const productosHTML = productosOrdenados.length > 0
+        ? productosOrdenados.map(p => `
+            <tr>
+                <td>${p.nom}</td>
+                <td class="center">${p.cantidad}</td>
+                <td class="right">$${Number(p.precio || 0).toFixed(2)}</td>
+                <td class="right bold green">$${Number(p.total || 0).toFixed(2)}</td>
+            </tr>`).join('')
+        : '<tr><td colspan="4" class="empty">Sin productos vendidos en este per\u00edodo</td></tr>';
+
+    const ordenesHTML = (ordenesPeriodo || []).length > 0
+        ? ordenesPeriodo.map(o => {
+            const f = new Date(o.fecha?.toDate?.() || o.fecha);
+            const fStr = isNaN(f.getTime()) ? '-' : f.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+            return `<tr>
+                <td>${o.nombre}</td>
+                <td>Mesa ${o.mesa}</td>
+                <td class="center">${fStr}</td>
+                <td class="right bold">$${Number(o.total || 0).toFixed(2)}</td>
+            </tr>`;
+        }).join('')
+        : '<tr><td colspan="4" class="empty">Sin \u00f3rdenes en este per\u00edodo</td></tr>';
+
+    const generado = new Date().toLocaleString('es-MX');
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Reporte de Caja \u2014 ${nombre} \u2014 ${fecha}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #1a1a1a; background: #fff; padding: 2cm 2.5cm; }
+    @page { size: A4; margin: 2cm 2.5cm; }
+
+    .header { display: flex; justify-content: space-between; align-items: flex-start;
+              border-bottom: 3px solid #4a6741; padding-bottom: 12px; margin-bottom: 16px; }
+    .header-title h1 { font-size: 20px; color: #4a6741; }
+    .header-title p { color: #666; font-size: 11px; margin-top: 4px; }
+    .header-info { text-align: right; font-size: 11px; color: #555; }
+    .header-info strong { display: block; font-size: 14px; color: #1a1a1a; margin-bottom: 2px; }
+
+    .info-bar { display: flex; gap: 8px; background: #f0f4e8; padding: 10px 14px;
+                border-radius: 6px; margin-bottom: 16px; }
+    .info-item { flex: 1; }
+    .info-item label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
+                       color: #777; display: block; margin-bottom: 2px; }
+    .info-item span { font-size: 12px; font-weight: 700; color: #2c3e1f; }
+
+    h2 { font-size: 11px; color: #4a6741; border-bottom: 1px solid #c8dab6; padding-bottom: 4px;
+         margin: 18px 0 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+    .fin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 4px; }
+    .fin-card { padding: 8px 10px; border-radius: 5px; background: #f0f4e8; }
+    .fin-card.egreso { background: #fdf0ed; }
+    .fin-card.balance { background: #e8f4fd; }
+    .fin-card label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
+                      color: #777; display: block; margin-bottom: 3px; }
+    .fin-card span { font-size: 16px; font-weight: 700; color: #4a6741; }
+    .fin-card.egreso span { color: #c0392b; }
+    .fin-card.balance span { color: #1a6fa0; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    thead th { background: #4a6741; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; }
+    tbody td { padding: 5px 8px; border-bottom: 1px solid #e8e8e8; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:nth-child(even) td { background: #f8faf5; }
+    .center { text-align: center; }
+    .right { text-align: right; }
+    .bold { font-weight: 700; }
+    .green { color: #27ae60; }
+    .empty { text-align: center; color: #999; padding: 10px; font-style: italic; }
+
+    .notes-box { background: #fafafa; border: 1px solid #e8e8e8; border-radius: 5px;
+                 padding: 8px 10px; font-style: italic; color: #555; font-size: 11px; }
+
+    .footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid #ddd;
+              display: flex; justify-content: space-between; color: #aaa; font-size: 9px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-title">
+      <h1>CAROLAS GREEN</h1>
+      <p>Reporte de Caja &mdash; Cierre de turno</p>
+    </div>
+    <div class="header-info">
+      <strong>${nombre}</strong>
+      Cajero responsable
+    </div>
+  </div>
+
+  <div class="info-bar">
+    <div class="info-item"><label>Fecha</label><span>${fecha}</span></div>
+    <div class="info-item"><label>Hora apertura</label><span>${horaApertura}</span></div>
+    <div class="info-item"><label>Hora cierre</label><span>${horaCierre}</span></div>
+    <div class="info-item"><label>\u00d3rdenes registradas</label><span>${totalOrdenes}</span></div>
+  </div>
+
+  <h2>Resumen Financiero</h2>
+  <div class="fin-grid">
+    <div class="fin-card"><label>Dinero Inicial</label><span>$${dineroInicial.toFixed(2)}</span></div>
+    <div class="fin-card"><label>Total Ventas</label><span>$${totalVentas.toFixed(2)}</span></div>
+    <div class="fin-card"><label>Ventas en Efectivo</label><span>$${Number(totalVentasEfectivo || 0).toFixed(2)}</span></div>
+    <div class="fin-card"><label>Ventas por Transferencia</label><span>$${Number(totalVentasTransferencia || 0).toFixed(2)}</span></div>
+    <div class="fin-card"><label>Ingresos Caja Física</label><span>$${ingresos.toFixed(2)}</span></div>
+    <div class="fin-card"><label>Ingresos Digitales</label><span>$${ingresosDigitales.toFixed(2)}</span></div>
+    <div class="fin-card egreso"><label>Egresos</label><span>$${egresos.toFixed(2)}</span></div>
+    <div class="fin-card balance"><label>Dinero Final Real</label><span>$${dineroFinal.toFixed(2)}</span></div>
+    <div class="fin-card balance"><label>Balance Caja Física</label><span>$${balance.toFixed(2)}</span></div>
+  </div>
+
+  <h2>Productos Vendidos</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Producto</th>
+        <th class="center">Cantidad vendida</th>
+        <th class="right">Precio unitario</th>
+        <th class="right">Total recaudado</th>
+      </tr>
+    </thead>
+    <tbody>${productosHTML}</tbody>
+  </table>
+
+  <h2>Detalle de \u00d3rdenes del Turno</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Cliente</th>
+        <th>Mesa</th>
+        <th class="center">Hora</th>
+        <th class="right">Total</th>
+      </tr>
+    </thead>
+    <tbody>${ordenesHTML}</tbody>
+  </table>
+
+  <h2>Notas de Cierre</h2>
+  <div class="notes-box">${notasCierre || 'Sin notas registradas.'}</div>
+
+  <div class="footer">
+    <span>CAROLAS GREEN &mdash; Sistema de Punto de Venta</span>
+    <span>Generado: ${generado}</span>
+  </div>
+
+  <script>window.onload = function() { window.print(); };<\/script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=920,height=760');
+    if (!win) {
+        alert('\u2705 Caja cerrada correctamente.\n\nPermite ventanas emergentes en el navegador para ver el reporte PDF autom\u00e1ticamente.\nPuedes generar el reporte desde el Historial de Cajas.');
+        return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+}
+
+function mostrarHistorialCajas() {
+    const container = document.getElementById('historialCajas');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (!cajas.length) {
+        container.innerHTML = '<p style="text-align:center; color:#798839; padding:1rem 0;">No hay cajas registradas aún.</p>';
+        return;
+    }
+
+    cajas.forEach(caja => {
+        const esAbierta = caja.estado === 'abierta';
+        const card = document.createElement('div');
+        card.className = `caja-card ${esAbierta ? 'caja-abierta' : 'caja-cerrada'}`;
+
+        const metricasHTML = !esAbierta ? `
+            <div class="caja-card-info">
+                <div class="caja-stat"><label>Dinero Inicial</label><p>$${Number(caja.dineroInicial || 0).toFixed(2)}</p></div>
+                <div class="caja-stat"><label>Ventas del turno</label><p class="caja-stat-ingreso">$${Number(caja.totalVentas || 0).toFixed(2)}</p></div>
+                <div class="caja-stat"><label>Ventas efectivo</label><p>$${Number(caja.totalVentasEfectivo || 0).toFixed(2)}</p></div>
+                <div class="caja-stat"><label>Ventas transferencia</label><p>$${Number(caja.totalVentasTransferencia || 0).toFixed(2)}</p></div>
+                <div class="caja-stat"><label>Órdenes</label><p>${caja.totalOrdenes || 0}</p></div>
+                <div class="caja-stat"><label>Egresos</label><p class="caja-stat-egreso">$${Number(caja.egresos || 0).toFixed(2)}</p></div>
+                <div class="caja-stat"><label>Dinero Final</label><p class="caja-stat-balance">$${Number(caja.dineroFinal || 0).toFixed(2)}</p></div>
+            </div>
+            <button class="btn-secondary" type="button" onclick="verReporteCaja('${caja.id}')" style="margin-top:0.75rem;"><i class="fas fa-chart-bar"></i> Ver reporte detallado</button>
+        ` : `
+            <div class="caja-card-info">
+                <div class="caja-stat"><label>Dinero Inicial</label><p>$${Number(caja.dineroInicial || 0).toFixed(2)}</p></div>
+                ${caja.detalles ? `<div class="caja-stat"><label>Detalles</label><p>${caja.detalles}</p></div>` : ''}
+            </div>
+        `;
+
+        card.innerHTML = `
+            <div class="caja-card-header">
+                <div>
+                    <span class="caja-card-nombre"><i class="fas fa-cash-register"></i> ${caja.nombre}</span>
+                    <span class="caja-card-fecha">${caja.fecha} &nbsp;&middot;&nbsp; Apertura: ${caja.horaApertura}${caja.horaCierre ? ` &nbsp;&middot;&nbsp; Cierre: ${caja.horaCierre}` : ''}</span>
+                </div>
+                <span class="caja-estado ${esAbierta ? 'caja-estado-abierta' : 'caja-estado-cerrada'}">${esAbierta ? 'Abierta' : 'Cerrada'}</span>
+            </div>
+            ${metricasHTML}
+        `;
+        container.appendChild(card);
+    });
+}
+
+function verReporteCaja(cajaId) {
+    const caja = cajas.find(c => c.id === cajaId);
+    if (!caja) return;
+
+    const fechaApertura = new Date(caja.fechaApertura?.toDate?.() || caja.fechaApertura);
+    const fechaCierre = caja.fechaCierre ? new Date(caja.fechaCierre?.toDate?.() || caja.fechaCierre) : null;
+
+    const ordenesCaja = ordenesTienda.filter(o => {
+        const fechaOrden = new Date(o.fecha?.toDate?.() || o.fecha);
+        return fechaOrden >= fechaApertura && (!fechaCierre || fechaOrden <= fechaCierre);
+    });
+
+    const productosVendidos = caja.productosVendidos || {};
+    const totalVentas = Number(caja.totalVentas || 0);
+    const totalVentasEfectivo = Number(caja.totalVentasEfectivo || 0);
+    const totalVentasTransferencia = Number(caja.totalVentasTransferencia || 0);
+    const dineroInicial = Number(caja.dineroInicial || 0);
+    const egresos = Number(caja.egresos || 0);
+    const dineroFinal = Number(caja.dineroFinal || 0);
+    const ingresos = dineroInicial + totalVentasEfectivo;
+    const ingresosDigitales = totalVentasTransferencia;
+
+    const productosOrdenados = Object.entries(productosVendidos)
+        .map(([nombre, data]) => ({ nombre, ...data }))
+        .sort((a, b) => b.total - a.total);
+
+    const productosHTML = productosOrdenados.length > 0
+        ? productosOrdenados.map(p => `
+            <tr>
+                <td>${p.nombre}</td>
+                <td style="text-align:center;">${p.cantidad}</td>
+                <td style="text-align:right;">$${Number(p.precio || 0).toFixed(2)}</td>
+                <td style="text-align:right; font-weight:600; color:#27ae60;">$${Number(p.total || 0).toFixed(2)}</td>
+            </tr>
+        `).join('')
+        : '<tr><td colspan="4" style="text-align:center; color:#999; padding:1rem;">Sin productos vendidos en este período</td></tr>';
+
+    const ordenesCajaHTML = ordenesCaja.length > 0
+        ? ordenesCaja.map(o => {
+            const f = new Date(o.fecha?.toDate?.() || o.fecha);
+            const fStr = isNaN(f.getTime()) ? '-' : f.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+            return `<tr>
+                <td>${o.nombre}</td>
+                <td>Mesa ${o.mesa}</td>
+                <td style="text-align:center;">${fStr}</td>
+                <td style="text-align:right; font-weight:600;">$${Number(o.total || 0).toFixed(2)}</td>
+            </tr>`;
+        }).join('')
+        : '<tr><td colspan="4" style="text-align:center; color:#999; padding:1rem;">Sin órdenes registradas en este período</td></tr>';
+
+    document.getElementById('reporteCajaNombre').textContent = `${caja.nombre} · ${caja.fecha}`;
+    document.getElementById('reporteCajaPeriodo').textContent = `${caja.horaApertura} → ${caja.horaCierre || 'En curso'}`;
+    document.getElementById('reporteProductosTabla').innerHTML = productosHTML;
+    document.getElementById('reporteOrdenesTabla').innerHTML = ordenesCajaHTML;
+    document.getElementById('reporteDineroInicial').textContent = `$${dineroInicial.toFixed(2)}`;
+    document.getElementById('reporteTotalVentas').textContent = `$${totalVentas.toFixed(2)}`;
+    document.getElementById('reporteVentasEfectivo').textContent = `$${totalVentasEfectivo.toFixed(2)}`;
+    document.getElementById('reporteVentasTransferencia').textContent = `$${totalVentasTransferencia.toFixed(2)}`;
+    document.getElementById('reporteIngresosTotales').textContent = `$${ingresos.toFixed(2)}`;
+    document.getElementById('reporteIngresosDigitales').textContent = `$${ingresosDigitales.toFixed(2)}`;
+    document.getElementById('reporteEgresos').textContent = `$${egresos.toFixed(2)}`;
+    document.getElementById('reporteDineroFinal').textContent = `$${dineroFinal.toFixed(2)}`;
+    document.getElementById('reporteBalance').textContent = `$${(ingresos - egresos).toFixed(2)}`;
+    document.getElementById('reporteTotalOrdenes').textContent = caja.totalOrdenes || ordenesCaja.length;
+    document.getElementById('reporteNotasCierre').textContent = caja.notasCierre || 'Sin notas.';
+
+    document.getElementById('modalReporteCaja').classList.add('show');
+}
+
+function imprimirReporteCaja() {
+    const nombre = document.getElementById('reporteCajaNombre')?.textContent || '';
+    const periodo = document.getElementById('reporteCajaPeriodo')?.textContent || '';
+    const productosBody = document.getElementById('reporteProductosTabla')?.innerHTML || '';
+    const ordenesBody = document.getElementById('reporteOrdenesTabla')?.innerHTML || '';
+    const dineroInicial = document.getElementById('reporteDineroInicial')?.textContent || '$0.00';
+    const totalVentas = document.getElementById('reporteTotalVentas')?.textContent || '$0.00';
+    const ventasEfectivo = document.getElementById('reporteVentasEfectivo')?.textContent || '$0.00';
+    const ventasTransferencia = document.getElementById('reporteVentasTransferencia')?.textContent || '$0.00';
+    const ingresos = document.getElementById('reporteIngresosTotales')?.textContent || '$0.00';
+    const ingresosDigitales = document.getElementById('reporteIngresosDigitales')?.textContent || '$0.00';
+    const egresosVal = document.getElementById('reporteEgresos')?.textContent || '$0.00';
+    const dineroFinal = document.getElementById('reporteDineroFinal')?.textContent || '$0.00';
+    const balance = document.getElementById('reporteBalance')?.textContent || '$0.00';
+    const totalOrdenes = document.getElementById('reporteTotalOrdenes')?.textContent || '0';
+    const notas = document.getElementById('reporteNotasCierre')?.textContent || '';
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Reporte de Caja - ${nombre}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 13px; margin: 1.5cm; color: #222; }
+    h1 { color: #4a6741; font-size: 1.4rem; margin-bottom: 0.25rem; }
+    h2 { color: #4a6741; font-size: 1rem; margin: 1.2rem 0 0.4rem; border-bottom: 1px solid #ccc; padding-bottom: 0.25rem; }
+    .periodo { color: #666; margin-bottom: 1rem; }
+    .metricas { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .metrica { flex: 1; min-width: 130px; padding: 0.6rem; border-radius: 6px; background: #f0f4e8; }
+    .metrica label { display: block; font-size: 0.75rem; color: #666; text-transform: uppercase; }
+    .metrica span { font-size: 1.1rem; font-weight: 700; color: #4a6741; }
+    .metrica.egreso span { color: #c0392b; }
+    .metrica.balance span { color: #2980b9; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.88rem; }
+    th { background: #4a6741; color: white; padding: 6px 8px; text-align: left; }
+    td { padding: 5px 8px; border-bottom: 1px solid #eee; }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: #fafafa; }
+    .notas { background: #f9f9f9; padding: 0.75rem; border-radius: 6px; font-style: italic; color: #555; }
+    .footer { text-align: right; color: #aaa; font-size: 0.78rem; margin-top: 1.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Reporte de Caja &mdash; CAROLAS GREEN</h1>
+  <p class="periodo"><strong>${nombre}</strong> &nbsp;|&nbsp; Período: ${periodo}</p>
+  <h2>Resumen financiero</h2>
+  <div class="metricas">
+    <div class="metrica"><label>Dinero Inicial</label><span>${dineroInicial}</span></div>
+    <div class="metrica"><label>Total Ventas</label><span>${totalVentas}</span></div>
+    <div class="metrica"><label>Ventas Efectivo</label><span>${ventasEfectivo}</span></div>
+    <div class="metrica"><label>Ventas Transferencia</label><span>${ventasTransferencia}</span></div>
+    <div class="metrica"><label>Ingresos Caja Física</label><span>${ingresos}</span></div>
+    <div class="metrica"><label>Ingresos Digitales</label><span>${ingresosDigitales}</span></div>
+    <div class="metrica egreso"><label>Egresos</label><span>${egresosVal}</span></div>
+    <div class="metrica balance"><label>Dinero Final Real</label><span>${dineroFinal}</span></div>
+    <div class="metrica balance"><label>Balance</label><span>${balance}</span></div>
+  </div>
+  <p><strong>Total de órdenes:</strong> ${totalOrdenes}</p>
+  <h2>Productos vendidos</h2>
+  <table>
+    <thead><tr><th>Producto</th><th style="text-align:center;">Cantidad</th><th style="text-align:right;">Precio unit.</th><th style="text-align:right;">Total</th></tr></thead>
+    <tbody>${productosBody}</tbody>
+  </table>
+  <h2>Órdenes del período</h2>
+  <table>
+    <thead><tr><th>Cliente</th><th>Mesa</th><th style="text-align:center;">Hora</th><th style="text-align:right;">Total</th></tr></thead>
+    <tbody>${ordenesBody}</tbody>
+  </table>
+  <h2>Notas de cierre</h2>
+  <div class="notas">${notas}</div>
+  <p class="footer">Generado el ${new Date().toLocaleString('es-MX')}</p>
+  <script>window.onload = function() { window.print(); };<\/script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=820,height=700');
+    if (!win) { alert('Permite ventanas emergentes para imprimir el reporte.'); return; }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+}
