@@ -24,6 +24,25 @@ import {
     getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-storage.js";
 
+// Forzar actualización en clientes móviles: unregister service workers
+// (evita que navegadores móviles sigan sirviendo scripts cacheados)
+if ('serviceWorker' in navigator) {
+    try {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+            if (regs.length) {
+                regs.forEach(r => r.unregister());
+                // Recargar una sola vez para forzar descarga de los nuevos scripts
+                if (!sessionStorage.getItem('sw-refreshed')) {
+                    sessionStorage.setItem('sw-refreshed', '1');
+                    window.location.reload();
+                }
+            }
+        }).catch(() => {});
+    } catch (e) {
+        // ignore
+    }
+}
+
 // ============================================
 // VARIABLES GLOBALES
 // ============================================

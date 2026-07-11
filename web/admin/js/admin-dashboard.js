@@ -816,16 +816,6 @@ async function guardarOrdenTienda() {
     const repartidor = document.getElementById('repartidorOrdenTienda')?.value.trim();
     const detallesAdicionales = document.getElementById('detallesOrdenTienda')?.value.trim();
 
-    if (!nombreCliente) {
-        alert('Escribe el nombre del cliente para continuar.');
-        return;
-    }
-
-    if (!telefonoCliente) {
-        alert('Escribe el número de teléfono del cliente para continuar.');
-        return;
-    }
-
     try {
         const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
         const total = ordenTiendaActual.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
@@ -853,15 +843,8 @@ async function guardarOrdenTienda() {
             fecha: new Date()
         };
 
-        const printWindow = window.open('', '_blank', 'width=340,height=720');
-        if (!printWindow) {
-            alert('Permite ventanas emergentes para imprimir el ticket.');
-            return;
-        }
-
         setTimeout(() => {
-            generarTicketTienda(ordenGuardada, printWindow);
-            printWindow.focus();
+            generarTicketTienda(ordenGuardada);
         }, 150);
 
         ordenTiendaActual = [];
@@ -882,6 +865,42 @@ async function guardarOrdenTienda() {
     }
 }
 
+function esDispositivoMovil() {
+    const userAgent = navigator.userAgent || '';
+    const touchCapable = navigator.maxTouchPoints > 0 || 'ontouchstart' in window || window.matchMedia('(pointer: coarse)').matches;
+    return window.innerWidth <= 1024 || touchCapable || /Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(userAgent);
+}
+
+function cerrarPreviewTicket() {
+    const modal = document.getElementById('modalTicketPreview');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+
+    const previewBody = document.getElementById('ticketPreviewBody');
+    if (previewBody) {
+        previewBody.innerHTML = '';
+    }
+    const btnOpen = document.getElementById('btnOpenTicketTab');
+    if (btnOpen) {
+        btnOpen.style.display = 'none';
+        btnOpen.onclick = null;
+    }
+    const btnPrint = document.getElementById('btnPrintTicketModal');
+    if (btnPrint) {
+        btnPrint.style.display = 'none';
+        btnPrint.onclick = null;
+    }
+
+    // Also ensure visibility flags are reset
+    try {
+        if (btnOpen) { btnOpen.style.visibility = 'hidden'; btnOpen.disabled = true; }
+        if (btnPrint) { btnPrint.style.visibility = 'hidden'; btnPrint.disabled = true; }
+    } catch (e) {}
+}
+
+window.cerrarPreviewTicket = cerrarPreviewTicket;
+
 function generarTicketTienda(orden, printWindow = null) {
     const fecha = new Date(orden.fecha?.toDate?.() || orden.fecha);
     const fechaTexto = isNaN(fecha.getTime()) ? 'Fecha no disponible' : fecha.toLocaleString('es-MX');
@@ -889,6 +908,7 @@ function generarTicketTienda(orden, printWindow = null) {
         .map(item => `${item.cantidad}x ${item.nombre}   $${(item.precio * item.cantidad).toFixed(2)}`)
         .join('\n');
 
+    const isMobile = esDispositivoMovil();
     const html = `
         <!DOCTYPE html>
         <html lang="es">
@@ -898,16 +918,15 @@ function generarTicketTienda(orden, printWindow = null) {
           <style>
             @page { size: 58mm auto; margin: 0; }
             html, body { margin: 0; padding: 0; background: #fff; }
-            body { width: 58mm; margin: 0 auto; font-family: 'Courier New', Courier, monospace; font-size: 14px; color: #000; line-height: 1.4; display: flex; justify-content: center; }
-            .ticket { width: 100%; max-width: 56mm; padding: 8px; box-sizing: border-box; margin: 0 auto; }
+            body { width: 58mm; margin: 0 auto; font-family: 'Courier New', Courier, monospace; font-size: 16px; color: #000; line-height: 1.5; display: flex; justify-content: center; }
+            .ticket { width: 100%; max-width: 56mm; padding: 10px 8px; box-sizing: border-box; margin: 0 auto; }
             .center { text-align: center; }
             .bold { font-weight: 700; }
-            .small { font-size: 12px; }
-            .item-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+            .small { font-size: 13px; }
+            .item-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
             .item-name { flex: 1; white-space: normal; word-break: break-word; }
-            .item-price { min-width: 50px; text-align: right; }
-            .separator { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
-            .button-print { display: inline-block; padding: 8px 10px; margin-top: 8px; font-family: 'Courier New', Courier, monospace; font-size: 13px; }
+            .item-price { min-width: 56px; text-align: right; }
+            .separator { border: 0; border-top: 1px dashed #000; margin: 8px 0; }
           </style>
         </head>
         <body>
@@ -937,12 +956,74 @@ function generarTicketTienda(orden, printWindow = null) {
             </div>
             <hr class="separator">
             <div class="center small" style="margin-top: 8px;">¡Gracias por su visita!</div>
-            <div class="center">
-              <button type="button" onclick="window.print();" class="button-print">Imprimir ticket</button>
-            </div>
+            ${isMobile ? '' : '<div class="center"><button type="button" onclick="window.print();" style="padding:8px 10px; margin-top:8px; font-family:Courier New, monospace; font-size:13px;">Imprimir ticket</button></div>'}
           </div>
         </body>
         </html>`;
+
+    // If the ticket preview modal exists, prefer showing it (user can open in new tab manually)
+    const previewBody = document.getElementById('ticketPreviewBody');
+    const modal = document.getElementById('modalTicketPreview');
+    if (previewBody && modal) {
+        // derive inner fragment (content inside <body>) so we inject only the ticket markup into the modal
+        let fragment = html;
+        try {
+            fragment = html.replace(/^[\s\S]*<body[^>]*>/i, '').replace(/<\/body>[\s\S]*$/i, '').trim();
+        } catch (e) {
+            fragment = html;
+        }
+
+        previewBody.innerHTML = fragment;
+        // wire "Abrir en pestaña" button
+        try {
+            const btnOpen = document.getElementById('btnOpenTicketTab');
+            if (btnOpen) {
+                btnOpen.style.display = '';
+                btnOpen.onclick = () => {
+                    const w = window.open('', '_blank');
+                    if (!w) {
+                        alert('Permite ventanas emergentes para abrir el ticket en una pestaña.');
+                        return;
+                    }
+                    w.document.open();
+                    w.document.write(html);
+                    w.document.close();
+                    w.focus();
+                };
+            }
+
+            const btnPrint = document.getElementById('btnPrintTicketModal');
+            if (btnPrint) {
+                btnPrint.style.display = 'inline-flex';
+                btnPrint.style.visibility = 'visible';
+                btnPrint.disabled = false;
+                btnPrint.onclick = () => {
+                    try {
+                        // Save full HTML to sessionStorage and navigate to print page in same tab
+                        const KEY = 'carolas_print_ticket';
+                        try { sessionStorage.setItem(KEY, html); } catch(e) { console.warn('sessionStorage set failed', e); }
+                        // Navigate in same tab to printable page
+                        window.location.href = 'printTicket.html';
+                    } catch (err) {
+                        console.warn('No se pudo iniciar impresión desde modal:', err);
+                        alert('No se pudo iniciar la impresión desde el dispositivo. Intenta "Abrir en pestaña" y usar imprimir.');
+                    }
+                };
+            }
+        } catch (err) {
+            console.warn('No se pudo configurar botones del modal:', err);
+        }
+
+        modal.classList.add('show');
+        // ensure header buttons are visible after modal opens
+        try {
+            const bp = document.getElementById('btnPrintTicketModal');
+            if (bp) { bp.style.display = 'inline-flex'; bp.style.visibility = 'visible'; bp.disabled = false; }
+            const bo = document.getElementById('btnOpenTicketTab');
+            if (bo) { bo.style.display = 'inline-flex'; bo.style.visibility = 'visible'; bo.disabled = false; }
+        } catch (e) { /* ignore */ }
+        return;
+    }
 
     const targetWindow = printWindow || window.open('', '_blank', 'width=340,height=720');
     if (!targetWindow) {
@@ -1035,15 +1116,8 @@ function imprimirTicketTienda(ordenId) {
         total: Number(orden.total || 0)
     };
 
-    const printWindow = window.open('', '_blank', 'width=340,height=720');
-    if (!printWindow) {
-        alert('Permite ventanas emergentes para imprimir el ticket.');
-        return;
-    }
-
     setTimeout(() => {
-        generarTicketTienda(ordenNormalizada, printWindow);
-        printWindow.focus();
+        generarTicketTienda(ordenNormalizada);
     }, 150);
 }
 

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Imprimir ticket - Carolas Green</title>
+  <style>
+    html,body{height:100%;margin:0;padding:0;background:#fff;font-family:Courier, monospace}
+    /* Force page size and remove margins for thermal printing */
+    @page { size: 58mm 210mm; margin: 0; }
+    body { -webkit-print-color-adjust: exact; color-adjust: exact; }
+    .ticket { width: 58mm; max-width: 58mm; margin: 0 auto; padding: 10px 8px; box-sizing: border-box; font-family: 'Courier New', Courier, monospace; font-size: 16px; color: #000; }
+    .center { text-align: center; }
+    .bold { font-weight: 700; }
+    .small { font-size: 14px; }
+    .item-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .item-name { flex: 1; white-space: normal; word-break: break-word; }
+    .item-price { min-width: 40px; text-align: right; }
+    .separator { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
+    .fallback{padding:1rem}
+    .actions{position:fixed;left:0;right:0;bottom:0;background:#fff;padding:0.5rem;display:flex;justify-content:center;gap:0.5rem;border-top:1px solid #eee}
+    button{padding:0.5rem 0.9rem;border-radius:6px;border:1px solid #ccc;background:#f5f5f5}
+
+    @media print {
+      html,body { height: auto; }
+      .actions { display: none !important; }
+      .ticket { margin: 0; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="printContainer"></div>
+  <div id="shareHint" class="fallback" style="display:none;">
+    <p>Descarga el PDF y ábrelo con PrinterApp.</p>
+    <p>En PrinterApp elige <strong>PDF Print</strong> o <strong>Abrir con</strong> y selecciona la impresora SUZWIP.</p>
+  </div>
+  <div class="actions" id="actions" style="display:none;">
+    <button id="btnDownloadPdf">Descargar PDF (58x210 mm)</button>
+    <button id="btnVolver">Volver</button>
+  </div>
+
+  <!-- libs for PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <script>
+    (function(){
+      const KEY = 'carolas_print_ticket';
+      const content = sessionStorage.getItem(KEY);
+      const container = document.getElementById('printContainer');
+      const actions = document.getElementById('actions');
+      if (!content) {
+        container.innerHTML = '<div class="fallback"><p>No hay ticket para imprimir.</p><p>Vuelve a la página de administración y genera el ticket nuevamente.</p></div>';
+        actions.style.display = 'flex';
+        document.getElementById('btnVolver').addEventListener('click', ()=> history.back());
+        return;
+      }
+
+      // Extract body fragment from content and inject into container
+      let fragment = content;
+      try {
+        fragment = content.replace(/^[\s\S]*<body[^>]*>/i, '').replace(/<\/body>[\s\S]*$/i, '').trim();
+      } catch(e) { fragment = content; }
+
+      container.innerHTML = fragment;
+      actions.style.display = 'flex';
+
+      document.getElementById('btnVolver').addEventListener('click', ()=> { try{ sessionStorage.removeItem(KEY); }catch(e){}; history.back(); });
+
+      // PDF generation (58 x variable mm)
+      const pdfBtn = document.getElementById('btnDownloadPdf');
+      const shareHint = document.getElementById('shareHint');
+
+      function downloadBlobUrl(url, filename) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+
+      async function generatePdfBlob(ticketElement) {
+        // render at higher scale for better quality
+        const scale = 3;
+        const canvas = await html2canvas(ticketElement, { scale, useCORS: true, backgroundColor: '#ffffff' });
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const { jsPDF } = window.jspdf;
+
+        // compute required page height in mm based on rendered canvas
+        const pageWidthMm = 58;
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
+        const imgHeightMm = (imgHeight * pageWidthMm) / imgWidth;
+
+        // create PDF with enough height (cap to a large number, but use actual height)
+        const pdf = new jsPDF({ unit: 'mm', format: [pageWidthMm, Math.max(30, Math.ceil(imgHeightMm + 2))], orientation: 'portrait' });
+        pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, imgHeightMm);
+
+        // return blob for sharing or download
+        const blob = pdf.output('blob');
+        return { blob, filename: 'ticket-' + Date.now() + '.pdf' };
+      }
+
+      pdfBtn.addEventListener('click', async () => {
+        try {
+          const ticketEl = container.querySelector('.ticket') || container;
+          const { blob, filename } = await generatePdfBlob(ticketEl);
+          const url = URL.createObjectURL(blob);
+          downloadBlobUrl(url, filename);
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          shareHint.style.display = 'block';
+        } catch (err) {
+          console.error('PDF generation error', err);
+          alert('No se pudo generar el PDF en este dispositivo. Intenta abrir en pestaña e imprimir.');
+        }
+      });
+
+    })();
+  </script>
+</body>
+</html>
