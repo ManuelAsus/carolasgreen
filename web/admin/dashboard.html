@@ -544,7 +544,18 @@
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
+    <script type="module" src="js/admin-main.js"></script>
     <script type="module" src="js/admin-dashboard.js"></script>
     <script type="module" src="js/mapas-admin-mejorado.js"></script>
+    <script>
+        const adminHamburger = document.getElementById('adminHamburger');
+        const adminSidebar = document.querySelector('.admin-sidebar');
+        if (adminHamburger && adminSidebar) {
+            adminHamburger.addEventListener('click', (event) => {
+                event.stopPropagation();
+                adminSidebar.classList.toggle('show');
+            });
+        }
+    </script>
 </body>
 </html>

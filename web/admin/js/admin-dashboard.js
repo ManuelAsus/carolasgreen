@@ -127,6 +127,7 @@ async function inicializarFirebase() {
                 usuarioActual = user;
                 document.getElementById('adminUserEmail').textContent = user.email;
                 cargarDatos();
+                actualizarPermisosOrdenesTienda();
             } else {
                 window.location.href = 'login.html';
             }
@@ -164,6 +165,28 @@ function setupMenuItems() {
     });
 }
 
+function isAdminUser() {
+    return usuarioActual?.email?.toLowerCase() === 'admin@carolasgreen.com';
+}
+
+function actualizarPermisosOrdenesTienda() {
+    const esAdmin = isAdminUser();
+    const btnAbrirCaja = document.getElementById('btnAbrirCaja');
+    const btnReporteVentas = document.getElementById('btnReporteVentas');
+
+    if (btnAbrirCaja) {
+        btnAbrirCaja.disabled = !esAdmin;
+        btnAbrirCaja.style.opacity = esAdmin ? '' : '0.6';
+        btnAbrirCaja.style.cursor = esAdmin ? '' : 'not-allowed';
+    }
+
+    if (btnReporteVentas) {
+        btnReporteVentas.disabled = !esAdmin;
+        btnReporteVentas.style.opacity = esAdmin ? '' : '0.6';
+        btnReporteVentas.style.cursor = esAdmin ? '' : 'not-allowed';
+    }
+}
+
 function cambiarSeccion(seccion) {
     document.querySelectorAll('.admin-section').forEach(s => {
         s.classList.remove('active');
@@ -174,6 +197,11 @@ function cambiarSeccion(seccion) {
 
     document.getElementById(seccion).classList.add('active');
     document.querySelector(`[data-section="${seccion}"]`).classList.add('active');
+
+    const sidebar = document.querySelector('.admin-sidebar');
+    if (window.innerWidth <= 768 && sidebar) {
+        sidebar.classList.remove('show');
+    }
 
     if (seccion === 'dashboard') {
         actualizarDashboard();
@@ -868,23 +896,25 @@ function generarTicketTienda(orden, printWindow = null) {
           <meta charset="UTF-8" />
           <title>Ticket - ${orden.nombre}</title>
           <style>
-            @page { size: 80mm auto; margin: 0; }
+            @page { size: 58mm auto; margin: 0; }
             html, body { margin: 0; padding: 0; background: #fff; }
-            body { width: 80mm; font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #000; }
-            .ticket { padding: 10px; box-sizing: border-box; }
+            body { width: 58mm; margin: 0 auto; font-family: 'Courier New', Courier, monospace; font-size: 14px; color: #000; line-height: 1.4; display: flex; justify-content: center; }
+            .ticket { width: 100%; max-width: 56mm; padding: 8px; box-sizing: border-box; margin: 0 auto; }
             .center { text-align: center; }
             .bold { font-weight: 700; }
-            hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
-            .row { display: flex; justify-content: space-between; gap: 8px; }
-            .small { font-size: 11px; }
-            pre { margin: 0; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 12px; }
+            .small { font-size: 12px; }
+            .item-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+            .item-name { flex: 1; white-space: normal; word-break: break-word; }
+            .item-price { min-width: 50px; text-align: right; }
+            .separator { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
+            .button-print { display: inline-block; padding: 8px 10px; margin-top: 8px; font-family: 'Courier New', Courier, monospace; font-size: 13px; }
           </style>
         </head>
         <body>
           <div class="ticket">
-            <div class="center bold">CAROLAS GREEN</div>
-            <div class="center small">Orden en tienda</div>
-            <hr>
+            <div class="center bold" style="font-size: 16px; margin-bottom: 4px;">CAROLAS GREEN</div>
+            <div class="center small" style="margin-bottom: 8px;">Orden en tienda</div>
+            <hr class="separator">
             <div class="small">Cliente: ${orden.nombre}</div>
             ${orden.telefono ? `<div class="small">Teléfono: ${orden.telefono}</div>` : ''}
             ${orden.mesa ? `<div class="small">Mesa: ${orden.mesa}</div>` : ''}
@@ -893,14 +923,22 @@ function generarTicketTienda(orden, printWindow = null) {
             ${orden.direccion ? `<div class="small">Dirección: ${orden.direccion}</div>` : ''}
             ${orden.repartidor ? `<div class="small">Repartidor: ${orden.repartidor}</div>` : ''}
             ${orden.detallesAdicionales ? `<div class="small">Detalles: ${orden.detallesAdicionales}</div>` : ''}
-            <hr>
-            <pre>${items}</pre>
-            <hr>
-            <div class="row bold"><span>Total</span><span>$${Number(orden.total || 0).toFixed(2)}</span></div>
-            <hr>
-            <div class="center small">¡Gracias por su visita!</div>
-            <div class="center" style="margin-top: 8px;">
-              <button type="button" onclick="window.print();" style="padding: 6px 10px; font-family: 'Courier New', Courier, monospace; font-size: 11px;">Imprimir ticket</button>
+            <hr class="separator">
+            ${orden.items.map(item => `
+              <div class="item-row">
+                <div class="item-name">${item.cantidad} x ${item.nombre}</div>
+                <div class="item-price">$${(item.precio * item.cantidad).toFixed(2)}</div>
+              </div>
+            `).join('')}
+            <hr class="separator">
+            <div class="item-row bold" style="margin-top: 4px;">
+              <div>Total</div>
+              <div>$${Number(orden.total || 0).toFixed(2)}</div>
+            </div>
+            <hr class="separator">
+            <div class="center small" style="margin-top: 8px;">¡Gracias por su visita!</div>
+            <div class="center">
+              <button type="button" onclick="window.print();" class="button-print">Imprimir ticket</button>
             </div>
           </div>
         </body>
@@ -921,6 +959,9 @@ function generarTicketTienda(orden, printWindow = null) {
 function mostrarOrdenesTienda() {
     const container = document.getElementById('listaOrdenesTienda');
     if (!container) return;
+
+    actualizarPermisosOrdenesTienda();
+    const esAdmin = isAdminUser();
 
     container.innerHTML = '';
 
@@ -972,7 +1013,7 @@ function mostrarOrdenesTienda() {
             <div class="ot-estado-flow">${flujoEstados}</div>
             <div class="pedido-actions">
                 <button class="btn-secondary" type="button" onclick="imprimirTicketTienda('${orden.id}')"><i class="fas fa-print"></i> Ticket</button>
-                <button class="btn-danger" type="button" onclick="eliminarOrdenTienda('${orden.id}')">Eliminar</button>
+                <button class="btn-danger${esAdmin ? '' : ' disabled'}" type="button" ${esAdmin ? '' : 'disabled'} onclick="eliminarOrdenTienda('${orden.id}')">Eliminar</button>
             </div>`;
         container.appendChild(card);
     });

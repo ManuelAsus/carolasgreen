@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login Admin - Carolas Green</title>
+    <title>Carolas Green</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#798839">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Carolas Green">
     <style>
         * {
             margin: 0;
@@ -166,17 +171,19 @@
             <div class="error-message" id="errorMessage"></div>
         </form>
 
-        <div class="info-box">
-            <strong>Datos de Prueba:</strong><br>
-            Usa tus credenciales de Firebase<br>
-            Email: admin@carolasgreen.com<br>
-            Contraseña: admin123456
-        </div>
     </div>
 
     <script type="module">
         import { auth } from '../js/firebase-config.js';
         import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-auth.js";
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch((error) => {
+                    console.warn('Service Worker registration failed:', error);
+                });
+            });
+        }
 
         const loginForm = document.getElementById('loginForm');
         const emailInput = document.getElementById('email');
