@@ -2515,6 +2515,10 @@ function generarPDFCaja(info) {
 
     const ingresos = dineroInicial + Number(totalVentasEfectivo || 0);
     const ingresosDigitales = Number(totalVentasTransferencia || 0);
+    const dineroEsperado = dineroInicial + Number(totalVentasEfectivo || 0) - egresos;
+    const diferenciaValor = dineroFinal - dineroEsperado;
+    const faltanteCaja = diferenciaValor < 0 ? Math.abs(diferenciaValor) : 0;
+    const sobranteCaja = diferenciaValor > 0 ? diferenciaValor : 0;
     const balance = ingresos - egresos;
 
     const productosOrdenados = Object.entries(productosVendidos || {})
@@ -2632,6 +2636,8 @@ function generarPDFCaja(info) {
     <div class="fin-card egreso"><label>Egresos</label><span>$${egresos.toFixed(2)}</span></div>
     <div class="fin-card balance"><label>Dinero Final Real</label><span>$${dineroFinal.toFixed(2)}</span></div>
     <div class="fin-card balance"><label>Balance Caja Física</label><span>$${balance.toFixed(2)}</span></div>
+    <div class="fin-card diferencia"><label>Dinero faltante</label><span>$${faltanteCaja.toFixed(2)}</span></div>
+    <div class="fin-card diferencia"><label>Dinero sobrante</label><span>$${sobranteCaja.toFixed(2)}</span></div>
   </div>
 
   <h2>Productos Vendidos</h2>
@@ -2751,6 +2757,15 @@ function verReporteCaja(cajaId) {
     const dineroFinal = Number(caja.dineroFinal || 0);
     const ingresos = dineroInicial + totalVentasEfectivo;
     const ingresosDigitales = totalVentasTransferencia;
+    const dineroEsperado = dineroInicial + totalVentasEfectivo - egresos;
+    const diferenciaValor = dineroFinal - dineroEsperado;
+    const faltanteCaja = diferenciaValor < 0 ? Math.abs(diferenciaValor) : 0;
+    const sobranteCaja = diferenciaValor > 0 ? diferenciaValor : 0;
+    const diferenciaTexto = diferenciaValor === 0
+        ? 'Sin diferencia'
+        : diferenciaValor > 0
+            ? `Sobrante $${diferenciaValor.toFixed(2)}`
+            : `Faltante $${Math.abs(diferenciaValor).toFixed(2)}`;
 
     const productosOrdenados = Object.entries(productosVendidos)
         .map(([nombre, data]) => ({ nombre, ...data }))
@@ -2793,6 +2808,8 @@ function verReporteCaja(cajaId) {
     document.getElementById('reporteEgresos').textContent = `$${egresos.toFixed(2)}`;
     document.getElementById('reporteDineroFinal').textContent = `$${dineroFinal.toFixed(2)}`;
     document.getElementById('reporteBalance').textContent = `$${(ingresos - egresos).toFixed(2)}`;
+    document.getElementById('reporteFaltanteCaja').textContent = `$${faltanteCaja.toFixed(2)}`;
+    document.getElementById('reporteSobranteCaja').textContent = `$${sobranteCaja.toFixed(2)}`;
     document.getElementById('reporteTotalOrdenes').textContent = caja.totalOrdenes || ordenesCaja.length;
     document.getElementById('reporteNotasCierre').textContent = caja.notasCierre || 'Sin notas.';
 
@@ -2813,6 +2830,8 @@ function imprimirReporteCaja() {
     const egresosVal = document.getElementById('reporteEgresos')?.textContent || '$0.00';
     const dineroFinal = document.getElementById('reporteDineroFinal')?.textContent || '$0.00';
     const balance = document.getElementById('reporteBalance')?.textContent || '$0.00';
+    const faltante = document.getElementById('reporteFaltanteCaja')?.textContent || '$0.00';
+    const sobrante = document.getElementById('reporteSobranteCaja')?.textContent || '$0.00';
     const totalOrdenes = document.getElementById('reporteTotalOrdenes')?.textContent || '0';
     const notas = document.getElementById('reporteNotasCierre')?.textContent || '';
 
@@ -2855,6 +2874,8 @@ function imprimirReporteCaja() {
     <div class="metrica egreso"><label>Egresos</label><span>${egresosVal}</span></div>
     <div class="metrica balance"><label>Dinero Final Real</label><span>${dineroFinal}</span></div>
     <div class="metrica balance"><label>Balance</label><span>${balance}</span></div>
+    <div class="metrica diferencia"><label>Dinero faltante</label><span>${faltante}</span></div>
+    <div class="metrica diferencia"><label>Dinero sobrante</label><span>${sobrante}</span></div>
   </div>
   <p><strong>Total de órdenes:</strong> ${totalOrdenes}</p>
   <h2>Productos vendidos</h2>
