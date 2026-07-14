@@ -60,7 +60,11 @@
             <section id="productos" class="admin-section">
                 <div class="admin-header">
                     <h2>Gestión de Productos</h2>
-                    <button class="btn-primary" id="btnAgregarProducto">+ Agregar Producto</button>
+                    <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center;">
+                        <button class="btn-primary" id="btnAgregarProducto">+ Agregar Producto</button>
+                        <input id="buscarProductoAdmin" type="text" placeholder="Buscar producto..." style="padding:0.75rem 1rem; border-radius:10px; border:1px solid #ddd; min-width:240px; flex:1;" />
+                        <!-- <button class="btn-secondary" id="btnCargaMasivaProductos" type="button">Cargar productos desde menú</button> -->
+                    </div>
                 </div>
                 
                 <div id="formProductoContainer" style="display: none; background: white; padding: 2rem; border-radius: 10px; margin-bottom: 2rem;">
@@ -161,6 +165,9 @@
                 <div style="display: grid; gap: 1rem; grid-template-columns: 1.2fr 0.8fr; align-items: start;">
                     <div class="card" style="padding: 1rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08);">
                         <h3 style="margin-bottom: 0.75rem;">Productos disponibles</h3>
+                        <div style="margin-bottom:0.75rem;">
+                            <input id="buscarProductoOrdenTienda" type="text" placeholder="Buscar producto..." style="width:100%; padding:0.75rem 1rem; border-radius:10px; border:1px solid #ddd;" />
+                        </div>
                         <div id="listaProductosTienda" class="productos-admin-list"></div>
                     </div>
 
@@ -335,6 +342,11 @@
                 <div class="form-group">
                     <label>Stock</label>
                     <input type="number" id="editStockProducto" required>
+                </div>
+                <div class="form-group">
+                    <label>Imagen</label>
+                    <input type="file" id="editImagenProducto" accept="image/*">
+                    <small>Selecciona una nueva imagen para reemplazar la actual, se guardará en Firestore como base64.</small>
                 </div>
                 <button type="submit" class="btn-primary">Guardar Cambios</button>
             </form>
@@ -562,6 +574,7 @@
     </script>
     <script type="module" src="js/admin-main.js"></script>
     <script type="module" src="js/admin-dashboard.js"></script>
+    <script type="module" src="js/admin-bulk-upload.js"></script>
     <script type="module" src="js/mapas-admin-mejorado.js"></script>
     <script>
         const adminHamburger = document.getElementById('adminHamburger');

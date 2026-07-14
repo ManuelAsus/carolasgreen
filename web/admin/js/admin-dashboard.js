@@ -448,9 +448,32 @@ function setupFormularios() {
         document.getElementById('formProductoContainer').style.display = 'block';
     });
 
+    const btnCargaMasiva = document.getElementById('btnCargaMasivaProductos');
+    if (btnCargaMasiva) {
+        btnCargaMasiva.addEventListener('click', async () => {
+            if (!confirm('¿Deseas cargar todos los productos del menú de forma masiva?')) return;
+            try {
+                await import('./admin-bulk-upload.js');
+                if (typeof window.bulkUploadProductos === 'function') {
+                    await window.bulkUploadProductos();
+                    await cargarDatos();
+                    mostrarProductos();
+                } else {
+                    alert('No se encontró la función de carga masiva. Recarga la página.');
+                }
+            } catch (error) {
+                console.error('Error cargando el módulo de carga masiva:', error);
+                alert('Error al iniciar la carga masiva: ' + error.message);
+            }
+        });
+    }
+
     document.getElementById('btnCancelarProducto').addEventListener('click', () => {
         document.getElementById('formProductoContainer').style.display = 'none';
     });
+
+    document.getElementById('buscarProductoAdmin').addEventListener('input', mostrarProductos);
+    document.getElementById('buscarProductoOrdenTienda').addEventListener('input', mostrarProductosOrdenTienda);
 
     document.getElementById('formProducto').addEventListener('submit', guardarProducto);
     document.getElementById('formEditarProducto').addEventListener('submit', guardarProductoEditado);
@@ -591,12 +614,20 @@ async function mostrarProductos() {
     const container = document.getElementById('listaProductos');
     container.innerHTML = '';
 
-    if (productos.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: #798839;">Sin productos. Agrega uno para comenzar.</p>';
+    const busqueda = document.getElementById('buscarProductoAdmin')?.value?.trim().toLowerCase() || '';
+    const productosFiltrados = productos.filter(producto => {
+        if (!busqueda) return true;
+        return [producto.nombre, producto.categoria, producto.ingredientes, producto.seccion]
+            .filter(Boolean)
+            .some(valor => valor.toString().toLowerCase().includes(busqueda));
+    });
+
+    if (productosFiltrados.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #798839;">No se encontraron productos con esa búsqueda.</p>';
         return;
     }
 
-    productos.forEach(producto => {
+    productosFiltrados.forEach(producto => {
         const stockClass = producto.stock <= 5 ? 'bajo' : '';
         const card = document.createElement('div');
         card.className = 'producto-admin-card';
@@ -642,19 +673,28 @@ async function guardarProductoEditado(e) {
     try {
         const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
 
-        await updateDoc(doc(db, 'productos', productoEditando.id), {
+        const actualizacion = {
             nombre: document.getElementById('editNombreProducto').value,
             categoria: document.getElementById('editCategoriaProducto').value,
             precio: parseFloat(document.getElementById('editPrecioProducto').value),
             ingredientes: document.getElementById('editIngredientesProducto').value,
             stock: parseInt(document.getElementById('editStockProducto').value)
-        });
+        };
+
+        const archivoImagen = document.getElementById('editImagenProducto').files[0];
+        if (archivoImagen) {
+            const imagenBase64 = await fileToBase64(archivoImagen);
+            Object.assign(actualizacion, prepareAssetForFirestore(imagenBase64, 'imagen'));
+        }
+
+        await updateDoc(doc(db, 'productos', productoEditando.id), actualizacion);
 
         document.getElementById('editProductoModal').classList.remove('show');
         await cargarDatos();
         mostrarProductos();
         alert('✅ Producto actualizado');
     } catch (error) {
+        console.error('Error editando producto:', error);
         alert('❌ Error: ' + error.message);
     }
 }
@@ -682,14 +722,22 @@ function mostrarProductosOrdenTienda() {
     const container = document.getElementById('listaProductosTienda');
     if (!container) return;
 
+    const busqueda = document.getElementById('buscarProductoOrdenTienda')?.value?.trim().toLowerCase() || '';
+    const productosFiltrados = productos.filter(producto => {
+        if (!busqueda) return true;
+        return [producto.nombre, producto.categoria, producto.ingredientes, producto.seccion]
+            .filter(Boolean)
+            .some(valor => valor.toString().toLowerCase().includes(busqueda));
+    });
+
     container.innerHTML = '';
 
-    if (!productos.length) {
-        container.innerHTML = '<p style="text-align: center; color: #798839;">No hay productos disponibles.</p>';
+    if (!productosFiltrados.length) {
+        container.innerHTML = '<p style="text-align: center; color: #798839;">No hay productos disponibles con ese criterio.</p>';
         return;
     }
 
-    productos.forEach(producto => {
+    productosFiltrados.forEach(producto => {
         const card = document.createElement('div');
         card.className = 'producto-admin-card';
         const imagenProducto = getStoredAsset(producto, 'imagen');
