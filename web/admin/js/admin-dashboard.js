@@ -892,10 +892,14 @@ async function guardarOrdenTienda() {
     const direccion = document.getElementById('direccionOrdenTienda')?.value.trim();
     const repartidor = document.getElementById('repartidorOrdenTienda')?.value.trim();
     const detallesAdicionales = document.getElementById('detallesOrdenTienda')?.value.trim();
+    const descuentoPercent = parseFloat(document.getElementById('descuentoOrdenTienda')?.value) || 0;
 
     try {
         const { collection, addDoc, getDocs } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
-        const total = ordenTiendaActual.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
+        const subtotal = ordenTiendaActual.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
+        const descuentoAmount = Number(((descuentoPercent / 100) * subtotal).toFixed(2)) || 0;
+        const totalConDescuento = Number((subtotal - descuentoAmount).toFixed(2));
+
         const pedidosSnap = await getDocs(collection(db, 'pedidos_tienda'));
         const folioNumero = pedidosSnap.size + 1;
         const folio = String(folioNumero).padStart(5, '0');
@@ -908,7 +912,10 @@ async function guardarOrdenTienda() {
             repartidor: repartidor || '',
             detallesAdicionales: detallesAdicionales || '',
             items: ordenTiendaActual,
-            total,
+            subtotal,
+            descuentoPercent,
+            descuentoAmount,
+            total: totalConDescuento,
             folio,
             estado: 'pendiente',
             metodoPago: tipoPago,
@@ -1031,11 +1038,13 @@ function generarTicketTienda(orden, printWindow = null) {
                 <div class="item-price">$${(item.precio * item.cantidad).toFixed(2)}</div>
               </div>
             `).join('')}
-            <hr class="separator">
-            <div class="item-row bold" style="margin-top: 4px;">
-              <div>Total</div>
-              <div>$${Number(orden.total || 0).toFixed(2)}</div>
-            </div>
+                        <hr class="separator">
+                        ${orden.subtotal ? `<div class="item-row"><div>Subtotal</div><div>$${Number(orden.subtotal||0).toFixed(2)}</div></div>` : ''}
+                        ${orden.descuentoAmount ? `<div class="item-row"><div>Descuento (${orden.descuentoPercent || 0}% )</div><div>-$${Number(orden.descuentoAmount||0).toFixed(2)}</div></div>` : ''}
+                        <div class="item-row bold" style="margin-top: 4px;">
+                            <div>Total</div>
+                            <div>$${Number(orden.total || 0).toFixed(2)}</div>
+                        </div>
             <hr class="separator">
             <div class="center small" style="margin-top: 8px;">¡Gracias por su visita!</div>
             ${isMobile ? '' : '<div class="center"><button type="button" onclick="window.print();" style="padding:8px 10px; margin-top:8px; font-family:Courier New, monospace; font-size:13px;">Imprimir ticket</button></div>'}
