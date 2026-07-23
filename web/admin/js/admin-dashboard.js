@@ -11,6 +11,7 @@ let ordenesTienda = [];
 let ordenTiendaActual = [];
 let cajas = [];
 let cajaActualData = null;
+let cajaReporteSeleccionada = null;
 let productoEditando = null;
 let db = null;
 let auth = null;
@@ -552,6 +553,21 @@ function setupFormularios() {
 
     // ========== CAJA ==========
     document.getElementById('btnAbrirCaja').addEventListener('click', mostrarModalAbrirCaja);
+    document.getElementById('btnHistorialCaja').addEventListener('click', mostrarHistorialCaja);
+    document.getElementById('btnVerOrdenes').addEventListener('click', () => {
+        cambiarSeccion('ordenes_tienda');
+        setTimeout(() => {
+            const ordenesContainer = document.getElementById('listaOrdenesTienda');
+            if (ordenesContainer) {
+                ordenesContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else {
+                const ordenesSection = document.getElementById('ordenes_tienda');
+                if (ordenesSection) {
+                    ordenesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+        }, 120);
+    });
     document.getElementById('btnReporteVentas').addEventListener('click', mostrarModalReporteVentas);
     document.getElementById('btnCerrarReporteVentas').addEventListener('click', () => {
         document.getElementById('modalReporteVentas').classList.remove('show');
@@ -567,6 +583,19 @@ function setupFormularios() {
     document.getElementById('btnCerrarReporteCaja').addEventListener('click', () => {
         document.getElementById('modalReporteCaja').classList.remove('show');
     });
+    const btnIrArribaDesdeHistorial = document.getElementById('btnIrArribaDesdeHistorial');
+    if (btnIrArribaDesdeHistorial) {
+        btnIrArribaDesdeHistorial.addEventListener('click', () => scrollPageTo('dashboard'));
+    }
+}
+
+function scrollPageTo(sectionId) {
+    const target = document.getElementById(sectionId);
+    if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 }
 
 async function guardarProducto(e) {
@@ -865,8 +894,11 @@ async function guardarOrdenTienda() {
     const detallesAdicionales = document.getElementById('detallesOrdenTienda')?.value.trim();
 
     try {
-        const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+        const { collection, addDoc, getDocs } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
         const total = ordenTiendaActual.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
+        const pedidosSnap = await getDocs(collection(db, 'pedidos_tienda'));
+        const folioNumero = pedidosSnap.size + 1;
+        const folio = String(folioNumero).padStart(5, '0');
 
         const orden = {
             nombre: nombreCliente,
@@ -877,6 +909,7 @@ async function guardarOrdenTienda() {
             detallesAdicionales: detallesAdicionales || '',
             items: ordenTiendaActual,
             total,
+            folio,
             estado: 'pendiente',
             metodoPago: tipoPago,
             tipoPago,
@@ -966,21 +999,22 @@ function generarTicketTienda(orden, printWindow = null) {
           <style>
             @page { size: 58mm auto; margin: 0; }
             html, body { margin: 0; padding: 0; background: #fff; }
-            body { width: 58mm; margin: 0 auto; font-family: 'Courier New', Courier, monospace; font-size: 16px; color: #000; line-height: 1.5; display: flex; justify-content: center; }
-            .ticket { width: 100%; max-width: 56mm; padding: 10px 8px; box-sizing: border-box; margin: 0 auto; }
+            body { width: 58mm; margin: 0 auto; font-family: 'Courier New', Courier, monospace; font-size: 18px; color: #000; line-height: 1.6; display: flex; justify-content: center; }
+            .ticket { width: 100%; max-width: 56mm; padding: 10px 10px; box-sizing: border-box; margin: 0 auto; }
             .center { text-align: center; }
             .bold { font-weight: 700; }
-            .small { font-size: 13px; }
-            .item-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-            .item-name { flex: 1; white-space: normal; word-break: break-word; }
-            .item-price { min-width: 56px; text-align: right; }
-            .separator { border: 0; border-top: 1px dashed #000; margin: 8px 0; }
+            .small { font-size: 15px; }
+            .item-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+            .item-name { flex: 1; white-space: normal; word-break: break-word; font-size: 15px; }
+            .item-price { min-width: 62px; text-align: right; font-size: 15px; }
+            .separator { border: 0; border-top: 1px dashed #000; margin: 10px 0; }
           </style>
         </head>
         <body>
           <div class="ticket">
             <div class="center bold" style="font-size: 16px; margin-bottom: 4px;">CAROLAS GREEN</div>
             <div class="center small" style="margin-bottom: 8px;">Orden en tienda</div>
+            <div class="small" style="font-weight:700; margin-bottom: 6px;">FOLIO: ${orden.folio ? orden.folio : '00000'}</div>
             <hr class="separator">
             <div class="small">Cliente: ${orden.nombre}</div>
             ${orden.telefono ? `<div class="small">Teléfono: ${orden.telefono}</div>` : ''}
@@ -1143,6 +1177,7 @@ function mostrarOrdenesTienda() {
             <div class="pedido-actions">
                 <button class="btn-secondary" type="button" onclick="imprimirTicketTienda('${orden.id}')"><i class="fas fa-print"></i> Ticket</button>
                 <button class="btn-danger${esAdmin ? '' : ' disabled'}" type="button" ${esAdmin ? '' : 'disabled'} onclick="eliminarOrdenTienda('${orden.id}')">Eliminar</button>
+                <button class="btn-secondary" type="button" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })"><i class="fas fa-arrow-up"></i> Ir arriba</button>
             </div>`;
         container.appendChild(card);
     });
@@ -2040,8 +2075,10 @@ window.eliminarOrdenTienda = eliminarOrdenTienda;
 
 // Funciones de caja
 window.verReporteCaja = verReporteCaja;
+window.descargarReporteCaja = descargarReporteCaja;
 window.imprimirReporteCaja = imprimirReporteCaja;
 window.mostrarModalCerrarCaja = mostrarModalCerrarCaja;
+window.scrollPageTo = scrollPageTo;
 
 // Funciones de reporte de ventas
 window.generarReporteVentas = generarReporteVentas;
@@ -2714,7 +2751,11 @@ function mostrarHistorialCajas() {
                 <div class="caja-stat"><label>Egresos</label><p class="caja-stat-egreso">$${Number(caja.egresos || 0).toFixed(2)}</p></div>
                 <div class="caja-stat"><label>Dinero Final</label><p class="caja-stat-balance">$${Number(caja.dineroFinal || 0).toFixed(2)}</p></div>
             </div>
-            <button class="btn-secondary" type="button" onclick="verReporteCaja('${caja.id}')" style="margin-top:0.75rem;"><i class="fas fa-chart-bar"></i> Ver reporte detallado</button>
+            <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-top:0.75rem;">
+                <button class="btn-secondary" type="button" onclick="verReporteCaja('${caja.id}')"><i class="fas fa-chart-bar"></i> Ver reporte detallado</button>
+                <button class="btn-primary" type="button" onclick="descargarReporteCaja('${caja.id}')"><i class="fas fa-file-pdf"></i> Descargar PDF</button>
+                <button class="btn-secondary" type="button" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })"><i class="fas fa-arrow-up"></i> Ir arriba</button>
+            </div>
         ` : `
             <div class="caja-card-info">
                 <div class="caja-stat"><label>Dinero Inicial</label><p>$${Number(caja.dineroInicial || 0).toFixed(2)}</p></div>
@@ -2733,6 +2774,120 @@ function mostrarHistorialCajas() {
             ${metricasHTML}
         `;
         container.appendChild(card);
+    });
+}
+
+async function mostrarHistorialCaja() {
+    cambiarSeccion('ordenes_tienda');
+    await cargarDatosCajas();
+    mostrarHistorialCajas();
+
+    const historial = document.getElementById('historialCajas');
+    if (historial) {
+        historial.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        historial.style.transition = 'background 0.4s ease';
+        historial.style.background = '#f7fbf3';
+        setTimeout(() => {
+            historial.style.background = '';
+        }, 1200);
+    }
+}
+
+function descargarReporteCaja(cajaId) {
+    const caja = cajas.find(c => c.id === cajaId);
+    if (!caja) return;
+
+    const fechaApertura = new Date(caja.fechaApertura?.toDate?.() || caja.fechaApertura);
+    const fechaCierre = caja.fechaCierre ? new Date(caja.fechaCierre?.toDate?.() || caja.fechaCierre) : null;
+    const ordenesCaja = ordenesTienda.filter(o => {
+        const fechaOrden = new Date(o.fecha?.toDate?.() || o.fecha);
+        return fechaOrden >= fechaApertura && (!fechaCierre || fechaOrden <= fechaCierre);
+    });
+
+    const productosVendidos = caja.productosVendidos || {};
+    const totalVentas = Number(caja.totalVentas || 0);
+    const totalVentasEfectivo = Number(caja.totalVentasEfectivo || 0);
+    const totalVentasTransferencia = Number(caja.totalVentasTransferencia || 0);
+    const dineroInicial = Number(caja.dineroInicial || 0);
+    const egresos = Number(caja.egresos || 0);
+    const dineroFinal = Number(caja.dineroFinal || 0);
+    const ingresos = dineroInicial + totalVentasEfectivo;
+    const ingresosDigitales = totalVentasTransferencia;
+    const fechaLabel = caja.fecha || '';
+    const horaLabel = `${caja.horaApertura || ''} - ${caja.horaCierre || ''}`;
+
+    const productosOrdenados = Object.entries(productosVendidos)
+        .map(([nombre, data]) => ({ nombre, ...data }))
+        .sort((a, b) => b.total - a.total);
+
+    const productosHTML = productosOrdenados.length > 0
+        ? productosOrdenados.map(p => `
+            <tr>
+                <td>${p.nombre}</td>
+                <td style="text-align:center;">${p.cantidad}</td>
+                <td style="text-align:right;">$${Number(p.precio || 0).toFixed(2)}</td>
+                <td style="text-align:right; font-weight:600; color:#27ae60;">$${Number(p.total || 0).toFixed(2)}</td>
+            </tr>`).join('')
+        : '<tr><td colspan="4" style="text-align:center; color:#999; padding:1rem;">Sin productos vendidos en este periodo</td></tr>';
+
+    const ordenesCajaHTML = ordenesCaja.length > 0
+        ? ordenesCaja.map(o => {
+            const f = new Date(o.fecha?.toDate?.() || o.fecha);
+            const fStr = isNaN(f.getTime()) ? '-' : f.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+            return `<tr>
+                <td>${o.nombre || '-'}</td>
+                <td>${o.mesa || '-'}</td>
+                <td style="text-align:center;">${fStr}</td>
+                <td style="text-align:right; font-weight:600;">$${Number(o.total || 0).toFixed(2)}</td>
+            </tr>`;
+        }).join('')
+        : '<tr><td colspan="4" style="text-align:center; color:#999; padding:1rem;">Sin órdenes registradas en este periodo</td></tr>';
+
+    const reporteElement = document.createElement('div');
+    reporteElement.style.padding = '1rem';
+    reporteElement.style.fontFamily = 'Arial, sans-serif';
+    reporteElement.innerHTML = `
+        <div style="max-width:800px; margin:auto;">
+            <h1 style="font-size:20px; color:#4a6741; margin-bottom:0.5rem;">Reporte de Caja - CAROLAS GREEN</h1>
+            <p style="font-size:12px; color:#555; margin-bottom:1rem;"><strong>${caja.nombre}</strong> | Fecha: ${fechaLabel} | Período: ${horaLabel}</p>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:0.75rem; margin-bottom:1rem;">
+                <div style="background:#f0f4e8; padding:0.8rem; border-radius:8px;"><strong style="font-size:10px;color:#777; text-transform:uppercase;">Dinero Inicial</strong><div style="font-size:16px;font-weight:700;color:#2c3e1f;">$${dineroInicial.toFixed(2)}</div></div>
+                <div style="background:#f0f4e8; padding:0.8rem; border-radius:8px;"><strong style="font-size:10px;color:#777; text-transform:uppercase;">Total Ventas</strong><div style="font-size:16px;font-weight:700;color:#2c3e1f;">$${totalVentas.toFixed(2)}</div></div>
+                <div style="background:#f0f4e8; padding:0.8rem; border-radius:8px;"><strong style="font-size:10px;color:#777; text-transform:uppercase;">Ventas Efectivo</strong><div style="font-size:16px;font-weight:700;color:#2c3e1f;">$${totalVentasEfectivo.toFixed(2)}</div></div>
+                <div style="background:#f0f4e8; padding:0.8rem; border-radius:8px;"><strong style="font-size:10px;color:#777; text-transform:uppercase;">Ventas Transferencia</strong><div style="font-size:16px;font-weight:700;color:#2c3e1f;">$${totalVentasTransferencia.toFixed(2)}</div></div>
+                <div style="background:#f0f4e8; padding:0.8rem; border-radius:8px;"><strong style="font-size:10px;color:#777; text-transform:uppercase;">Ingresos Físicos</strong><div style="font-size:16px;font-weight:700;color:#2c3e1f;">$${ingresos.toFixed(2)}</div></div>
+                <div style="background:#f0f4e8; padding:0.8rem; border-radius:8px;"><strong style="font-size:10px;color:#777; text-transform:uppercase;">Ingresos Digitales</strong><div style="font-size:16px;font-weight:700;color:#2c3e1f;">$${ingresosDigitales.toFixed(2)}</div></div>
+                <div style="background:#fdf0ed; padding:0.8rem; border-radius:8px;"><strong style="font-size:10px;color:#777; text-transform:uppercase;">Egresos</strong><div style="font-size:16px;font-weight:700;color:#c0392b;">$${egresos.toFixed(2)}</div></div>
+                <div style="background:#e8f4fd; padding:0.8rem; border-radius:8px;"><strong style="font-size:10px;color:#777; text-transform:uppercase;">Dinero Final</strong><div style="font-size:16px;font-weight:700;color:#1a6fa0;">$${dineroFinal.toFixed(2)}</div></div>
+            </div>
+            <h2 style="font-size:14px; border-bottom:1px solid #ddd; padding-bottom:6px; margin-bottom:8px; color:#4a6741;">Productos vendidos</h2>
+            <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                <thead><tr><th style="text-align:left; padding:6px; background:#4a6741; color:#fff;">Producto</th><th style="text-align:center; padding:6px; background:#4a6741; color:#fff;">Cantidad</th><th style="text-align:right; padding:6px; background:#4a6741; color:#fff;">Precio</th><th style="text-align:right; padding:6px; background:#4a6741; color:#fff;">Total</th></tr></thead>
+                <tbody>${productosHTML}</tbody>
+            </table>
+            <h2 style="font-size:14px; border-bottom:1px solid #ddd; padding-bottom:6px; margin:18px 0 8px; color:#4a6741;">Órdenes del período</h2>
+            <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                <thead><tr><th style="text-align:left; padding:6px; background:#4a6741; color:#fff;">Cliente</th><th style="text-align:left; padding:6px; background:#4a6741; color:#fff;">Mesa</th><th style="text-align:center; padding:6px; background:#4a6741; color:#fff;">Hora</th><th style="text-align:right; padding:6px; background:#4a6741; color:#fff;">Total</th></tr></thead>
+                <tbody>${ordenesCajaHTML}</tbody>
+            </table>
+            <div style="margin-top:16px; padding:12px; border:1px solid #e8e8e8; border-radius:8px; background:#fafafa; font-size:11px; color:#555;">Notas de cierre: ${caja.notasCierre || 'Sin notas registradas.'}</div>
+        </div>
+    `;
+
+    document.body.appendChild(reporteElement);
+    const filename = `Reporte_Caja_${caja.nombre.replace(/\s+/g, '_')}_${fechaLabel.replace(/\//g, '-')}.pdf`;
+    html2pdf().set({
+        margin: 10,
+        filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    }).from(reporteElement).save().then(() => {
+        document.body.removeChild(reporteElement);
+    }).catch(error => {
+        document.body.removeChild(reporteElement);
+        console.error('Error al generar PDF:', error);
+        alert('No se pudo descargar el reporte en PDF. Revisa la consola para más detalles.');
     });
 }
 
