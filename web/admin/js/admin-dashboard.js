@@ -1153,6 +1153,7 @@ function mostrarOrdenesTienda() {
         const fechaTicket = new Date(orden.fecha?.toDate?.() || orden.fecha);
         const fechaTexto = isNaN(fechaTicket.getTime()) ? 'Fecha no disponible' : fechaTicket.toLocaleString('es-MX');
         const itemsHtml = orden.items.map(item => `<div class="pedido-item"><span class="pedido-item-nombre">${item.nombre}</span><span class="pedido-item-cantidad">x${item.cantidad}</span><span class="pedido-item-precio">$${(item.precio * item.cantidad).toFixed(2)}</span></div>`).join('');
+        const pagoActual = String(orden.tipoPago || orden.metodoPago || 'efectivo').toLowerCase();
 
         const estadoActual = orden.estado || 'pendiente';
         const estadoLabel = ESTADOS.find(e => e.key === estadoActual)?.label || estadoActual;
@@ -1175,7 +1176,12 @@ function mostrarOrdenesTienda() {
             <div class="pedido-info">
                 <div class="pedido-detail"><label>Fecha</label><p>${fechaTexto}</p></div>
                 <div class="pedido-detail"><label>Teléfono</label><p>${orden.telefono || '-'}</p></div>
-                <div class="pedido-detail"><label>Pago</label><p>${orden.tipoPago === 'transferencia' ? 'Transferencia' : 'Efectivo'}</p></div>
+                <div class="pedido-detail"><label>Pago</label>${esAdmin ? `
+                    <select class="orden-pago-select" onchange="cambiarMetodoPagoOrdenTienda('${orden.id}', this.value)">
+                        <option value="efectivo"${pagoActual === 'efectivo' ? ' selected' : ''}>Efectivo</option>
+                        <option value="transferencia"${pagoActual === 'transferencia' ? ' selected' : ''}>Transferencia</option>
+                    </select>
+                ` : `<p>${pagoActual === 'transferencia' ? 'Transferencia' : 'Efectivo'}</p>`}</div>
                 <div class="pedido-detail"><label>Total</label><p style="color:#dbb42a;font-weight:bold;">$${Number(orden.total || 0).toFixed(2)}</p></div>
                 ${orden.direccion ? `<div class="pedido-detail"><label>Direcci\u00f3n</label><p>${orden.direccion}</p></div>` : ''}
                 ${orden.repartidor ? `<div class="pedido-detail"><label>Repartidor</label><p>${orden.repartidor}</p></div>` : ''}
@@ -2060,6 +2066,41 @@ async function eliminarOrdenTienda(ordenId) {
     }
 }
 
+async function cambiarMetodoPagoOrdenTienda(ordenId, nuevoMetodoPago) {
+    const metodoPago = nuevoMetodoPago === 'transferencia' ? 'transferencia' : 'efectivo';
+    try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js');
+        await updateDoc(doc(db, 'pedidos_tienda', ordenId), {
+            tipoPago: metodoPago,
+            metodoPago: metodoPago
+        });
+
+        const orden = ordenesTienda.find(o => o.id === ordenId);
+        if (orden) {
+            orden.tipoPago = metodoPago;
+            orden.metodoPago = metodoPago;
+        }
+
+        mostrarOrdenesTienda();
+        actualizarReportesTrasCambioPago();
+
+        alert('✅ Método de pago actualizado correctamente.');
+    } catch (error) {
+        console.error('Error al actualizar método de pago:', error);
+        alert('❌ No se pudo actualizar el método de pago: ' + error.message);
+    }
+}
+
+function actualizarReportesTrasCambioPago() {
+    if (document.getElementById('modalCerrarCaja')?.classList.contains('show')) {
+        mostrarModalCerrarCaja();
+    }
+    if (document.getElementById('modalReporteVentas')?.classList.contains('show')) {
+        const periodoActivo = document.querySelector('#modalReporteVentas .reporte-tab.active')?.dataset.periodo || 'dia';
+        generarReporteVentas(periodoActivo);
+    }
+}
+
 window.cambiarSeccion = cambiarSeccion;
 window.editarProducto = editarProducto;
 window.eliminarProducto = eliminarProducto;
@@ -2079,6 +2120,7 @@ window.eliminarImagenGaleria = eliminarImagenGaleria;
 window.agregarProductoOrdenTienda = agregarProductoOrdenTienda;
 window.quitarProductoOrdenTienda = quitarProductoOrdenTienda;
 window.imprimirTicketTienda = imprimirTicketTienda;
+window.cambiarMetodoPagoOrdenTienda = cambiarMetodoPagoOrdenTienda;
 window.cambiarEstadoOrdenTienda = cambiarEstadoOrdenTienda;
 window.eliminarOrdenTienda = eliminarOrdenTienda;
 
